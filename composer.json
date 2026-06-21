@@ -1,0 +1,30 @@
+{
+    "name": "componenta/http-cache",
+    "description": "Route-aware HTTP response cache middleware for Componenta",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.4",
+        "componenta/config": "^1.0",
+        "componenta/http": "^1.0",
+        "componenta/router": "^1.0",
+        "psr/container": "^2.0",
+        "psr/http-message": "^2.0",
+        "psr/http-server-middleware": "^1.0",
+        "psr/http-server-handler": "^1.0",
+        "psr/simple-cache": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Componenta\\Http\\Cache\\": "src/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "componenta": {
+            "config-providers": [
+                "Componenta\\Http\\Cache\\ConfigProvider"
+            ]
+        }
+    }
+}
