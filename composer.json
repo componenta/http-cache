@@ -31,7 +31,11 @@
     "scripts": {
         "test": "@php vendor/bin/phpunit tests"
     },
+    "config": {
+        "sort-packages": true
+    },
     "minimum-stability": "stable",
+    "prefer-stable": true,
     "extra": {
         "componenta": {
             "config-providers": [
