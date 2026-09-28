@@ -63,6 +63,21 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertNotNull($cached);
         self::assertGreaterThanOrEqual(120, $cached->age(time()));
     }
+
+    public function testPersistsFreshnessDeadlineFromStorageTtl(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+
+        self::assertTrue($store->store('key', new Response(200, [], 'body'), 60));
+
+        $cached = $store->fetch('key');
+        self::assertNotNull($cached);
+        $remaining = $cached->remainingFreshness(time());
+        self::assertNotNull($remaining);
+        self::assertGreaterThan(0, $remaining);
+        self::assertLessThanOrEqual(60, $remaining);
+    }
 }
 
 final class ArrayCache implements CacheInterface
