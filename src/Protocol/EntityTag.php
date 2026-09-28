@@ -25,8 +25,14 @@ final class EntityTag
             if (self::opaqueTag($candidate) === null) {
                 return false;
             }
+        }
 
-            if ($current !== null && self::weaklyEqual($candidate, $current)) {
+        if ($current === null) {
+            return false;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (self::weaklyEqual($candidate, $current)) {
                 return true;
             }
         }
