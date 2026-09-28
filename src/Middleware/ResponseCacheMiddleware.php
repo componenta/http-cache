@@ -199,17 +199,18 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         $now = time();
+        $remainingFreshness = $cached->remainingFreshness($now);
+
+        if ($remainingFreshness === null || $remainingFreshness <= 0) {
+            return false;
+        }
 
         if (is_int($maxAge) && $cached->age($now) > $maxAge) {
             return false;
         }
 
-        if (is_int($minFresh)) {
-            $remainingFreshness = $cached->remainingFreshness($now);
-
-            if ($remainingFreshness === null || $remainingFreshness < $minFresh) {
-                return false;
-            }
+        if (is_int($minFresh) && $remainingFreshness < $minFresh) {
+            return false;
         }
 
         return $policy->allowsStatus($cached->status);
