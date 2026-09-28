@@ -34,23 +34,53 @@ final class Psr16TagVersionStoreTest extends TestCase
 
         $store->invalidateTags(['product:42']);
     }
+
+    public function testCorruptedGenerationIsReplacedInsteadOfFallingBackToZero(): void
+    {
+        $cache = new TagSpyCache();
+        $cache->storedValue = 'corrupted';
+        $store = new Psr16TagVersionStore($cache);
+
+        $versions = $store->versions(['product:42']);
+
+        self::assertIsInt($versions['product:42']);
+        self::assertGreaterThan(0, $versions['product:42']);
+        self::assertSame($versions['product:42'], $cache->storedValue);
+    }
+
+    public function testCorruptedGenerationRepairFailureIsVisible(): void
+    {
+        $cache = new TagSpyCache();
+        $cache->storedValue = 'corrupted';
+        $cache->setResult = false;
+        $store = new Psr16TagVersionStore($cache);
+
+        $this->expectException(RuntimeException::class);
+
+        $store->versions(['product:42']);
+    }
 }
 
 final class TagSpyCache implements CacheInterface
 {
     public ?string $lastKey = null;
     public bool $setResult = true;
+    public mixed $storedValue = null;
 
     public function get(string $key, mixed $default = null): mixed
     {
         $this->lastKey = $key;
 
-        return $default;
+        return $this->storedValue ?? $default;
     }
 
     public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
     {
         $this->lastKey = $key;
+
+        if ($this->setResult) {
+            $this->storedValue = $value;
+        }
 
         return $this->setResult;
     }
@@ -62,6 +92,8 @@ final class TagSpyCache implements CacheInterface
 
     public function clear(): bool
     {
+        $this->storedValue = null;
+
         return true;
     }
 
@@ -82,6 +114,6 @@ final class TagSpyCache implements CacheInterface
 
     public function has(string $key): bool
     {
-        return false;
+        return $this->storedValue !== null;
     }
 }
