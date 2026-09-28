@@ -163,6 +163,39 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/'), $handler);
     }
 
+    public function testNonHeuristicStatusWithoutExplicitStoragePermissionIsNotCached(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [500]);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(500, ['Cache-Control' => 'no-transform'], 'error'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/failure'), $handler);
+
+        self::assertSame(500, $response->getStatusCode());
+    }
+
+    public function testPolicyCanMakeOtherwiseNonHeuristicStatusExplicitlyCacheable(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [500]);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())
+            ->method('store')
+            ->willReturnCallback(static function (string $key, ResponseInterface $response, int $ttl): bool {
+                self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
+                self::assertSame(60, $ttl);
+
+                return true;
+            });
+        $handler = $this->handler(new Response(500, [], 'error'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/failure'), $handler);
+
+        self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
+    }
+
     public function testNoCacheResponseIsNotStoredOrRewritten(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
