@@ -100,6 +100,16 @@ final class ProtocolTest extends TestCase
         self::assertTrue(EntityTag::ifNoneMatch(['"a,b", "other"'], 'W/"a,b"'));
     }
 
+    public function testIfNoneMatchRejectsWildcardMixedWithOtherTags(): void
+    {
+        self::assertFalse(EntityTag::ifNoneMatch(['*, "abc"'], 'W/"abc"'));
+    }
+
+    public function testIfNoneMatchRejectsMalformedTagList(): void
+    {
+        self::assertFalse(EntityTag::ifNoneMatch(['"abc", malformed'], 'W/"abc"'));
+    }
+
     public function testIfNoneMatchWildcardMatchesStoredRepresentationWithoutEtag(): void
     {
         self::assertTrue(EntityTag::ifNoneMatch(['*'], null));
