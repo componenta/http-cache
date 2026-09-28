@@ -57,6 +57,35 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         self::assertNotSame($first, $second);
     }
 
+    public function testPolicyChangesCreateNewCacheNamespace(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $request = new ServerRequest('GET', 'https://example.test/items');
+
+        $short = $generator->generate($request, new HttpCachePolicy(ttl: 60));
+        $long = $generator->generate($request, new HttpCachePolicy(ttl: 600));
+
+        self::assertNotSame($short, $long);
+    }
+
+    public function testPrivateCredentialVariantDoesNotSharePublicKey(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $request = (new ServerRequest('GET', 'https://example.test/items'))
+            ->withHeader('Authorization', 'Bearer secret');
+
+        $private = $generator->generate(
+            $request,
+            new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true),
+        );
+        $public = $generator->generate(
+            new ServerRequest('GET', 'https://example.test/items'),
+            new HttpCachePolicy(ttl: 60),
+        );
+
+        self::assertNotSame($private, $public);
+    }
+
     private function tags(): TagVersionStoreInterface
     {
         return new class implements TagVersionStoreInterface {
