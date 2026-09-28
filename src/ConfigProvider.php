@@ -6,6 +6,7 @@ namespace Componenta\Http\Cache;
 
 use Componenta\Config\ConfigProvider as BaseConfigProvider;
 use Componenta\Http\Cache\Factory\ConfigCachePolicyProviderFactory;
+use Componenta\Http\Cache\Factory\DefaultCacheKeyGeneratorFactory;
 use Componenta\Http\Cache\Factory\Psr16ResponseCacheStoreFactory;
 use Componenta\Http\Cache\Factory\Psr16TagVersionStoreFactory;
 use Componenta\Http\Cache\Factory\ResponseCacheMiddlewareFactory;
@@ -29,6 +30,7 @@ final class ConfigProvider extends BaseConfigProvider
         return [
             ResponseCacheMiddleware::class => ResponseCacheMiddlewareFactory::class,
             ConfigCachePolicyProvider::class => ConfigCachePolicyProviderFactory::class,
+            DefaultCacheKeyGenerator::class => DefaultCacheKeyGeneratorFactory::class,
             Psr16ResponseCacheStore::class => Psr16ResponseCacheStoreFactory::class,
             Psr16TagVersionStore::class => Psr16TagVersionStoreFactory::class,
         ];
@@ -37,9 +39,7 @@ final class ConfigProvider extends BaseConfigProvider
     #[Override]
     protected function getAutowires(): array
     {
-        return [
-            DefaultCacheKeyGenerator::class,
-        ];
+        return [];
     }
 
     #[Override]
