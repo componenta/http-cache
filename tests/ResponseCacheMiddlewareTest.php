@@ -246,6 +246,42 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('ETag'));
     }
 
+    public function testIfMatchIsForwardedToOriginInsteadOfEvaluatedByCache(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->method('store')->willReturn(false);
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(200, [], 'origin'));
+        $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
+            ->withHeader('If-Match', '"abc"');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testIfUnmodifiedSinceIsForwardedToOriginInsteadOfEvaluatedByCache(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->method('store')->willReturn(false);
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(200, [], 'origin'));
+        $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
+            ->withHeader('If-Unmodified-Since', 'Sun, 27 Sep 2026 20:00:00 GMT');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
     /**
      * @return array{CachePolicyProviderInterface, CacheKeyGeneratorInterface, ResponseCacheStoreInterface, CacheInvalidatorInterface}
      */
