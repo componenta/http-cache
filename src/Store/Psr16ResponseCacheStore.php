@@ -133,6 +133,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             strtolower(Header::CONNECTION) => true,
             strtolower(Header::KEEP_ALIVE) => true,
             strtolower(Header::PROXY_AUTHENTICATE) => true,
+            'proxy-authentication-info' => true,
             strtolower(Header::PROXY_AUTHORIZATION) => true,
             'proxy-connection' => true,
             strtolower(Header::TE) => true,
