@@ -16,6 +16,7 @@ use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -500,7 +501,12 @@ final class ResponseCacheMiddlewareTest extends TestCase
     }
 
     /**
-     * @return array{CachePolicyProviderInterface, CacheKeyGeneratorInterface, ResponseCacheStoreInterface, CacheInvalidatorInterface}
+     * @return array{
+     *     CachePolicyProviderInterface&MockObject,
+     *     CacheKeyGeneratorInterface&MockObject,
+     *     ResponseCacheStoreInterface&MockObject,
+     *     CacheInvalidatorInterface&MockObject
+     * }
      */
     private function cacheMissDependencies(HttpCachePolicy $policy): array
     {
@@ -513,6 +519,9 @@ final class ResponseCacheMiddlewareTest extends TestCase
         return [$policies, $keys, $store, $invalidator];
     }
 
+    /**
+     * @return CachePolicyProviderInterface&MockObject
+     */
     private function policyProvider(HttpCachePolicy $policy): CachePolicyProviderInterface
     {
         $provider = $this->createMock(CachePolicyProviderInterface::class);
@@ -521,6 +530,9 @@ final class ResponseCacheMiddlewareTest extends TestCase
         return $provider;
     }
 
+    /**
+     * @return CacheKeyGeneratorInterface&MockObject
+     */
     private function keyGenerator(): CacheKeyGeneratorInterface
     {
         $keys = $this->createMock(CacheKeyGeneratorInterface::class);
@@ -529,6 +541,9 @@ final class ResponseCacheMiddlewareTest extends TestCase
         return $keys;
     }
 
+    /**
+     * @return RequestHandlerInterface&MockObject
+     */
     private function handler(ResponseInterface $response): RequestHandlerInterface
     {
         $handler = $this->createMock(RequestHandlerInterface::class);
