@@ -28,6 +28,8 @@ final class HttpCachePolicyTest extends TestCase
         yield 'put' => ['PUT'];
         yield 'patch' => ['PATCH'];
         yield 'delete' => ['DELETE'];
+        yield 'options' => ['OPTIONS'];
+        yield 'trace' => ['TRACE'];
     }
 
     #[DataProvider('unsupportedStatuses')]
@@ -55,6 +57,13 @@ final class HttpCachePolicyTest extends TestCase
         new HttpCachePolicy(ttl: 60, allowAuthenticated: true);
     }
 
+    public function testPrivateCachingRequiresCredentialPartitioning(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new HttpCachePolicy(ttl: 60, private: true);
+    }
+
     public function testSetCookieCachingCannotBeEnabled(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -69,7 +78,7 @@ final class HttpCachePolicyTest extends TestCase
         new HttpCachePolicy(ttl: 60, varyHeaders: ["Accept-Language\r\nX-Injected: yes"]);
     }
 
-    public function testAllowsPrivateAuthenticatedCaching(): void
+    public function testAllowsCredentialPartitionedPrivateCaching(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
 
