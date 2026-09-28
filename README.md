@@ -131,4 +131,4 @@ It reports cache states such as `HIT`, `MISS`, `BYPASS` and `INVALIDATION-FAILED
 
 ## Verification
 
-The repository quality workflow tests PHP 8.4 and 8.5 against both lowest and highest supported dependency sets. It runs strict Composer validation, dependency security audit and PHPUnit tests.
+The repository quality workflow tests PHP 8.4 and 8.5 against both lowest and highest supported dependency sets. It runs strict Composer validation, dependency security audit, PHPStan at level max for `src` and `tests`, and PHPUnit tests.
