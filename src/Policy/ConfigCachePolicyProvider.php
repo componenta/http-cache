@@ -10,15 +10,42 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class ConfigCachePolicyProvider implements CachePolicyProviderInterface
 {
+    /** @var array<string, HttpCachePolicy|array<string, mixed>> */
+    private readonly array $policies;
+
     /** @var array<string, HttpCachePolicy> */
     private array $resolved = [];
 
     /**
-     * @param array<string, HttpCachePolicy|array<string, mixed>> $policies
+     * @param array<array-key, mixed> $policies
      */
-    public function __construct(
-        private readonly array $policies,
-    ) {}
+    public function __construct(array $policies)
+    {
+        $normalized = [];
+
+        foreach ($policies as $routeName => $policy) {
+            if (!is_string($routeName) || $routeName === '') {
+                throw new InvalidArgumentException('HTTP cache policy route names must be non-empty strings.');
+            }
+
+            if ($policy instanceof HttpCachePolicy) {
+                $normalized[$routeName] = $policy;
+                continue;
+            }
+
+            if (!is_array($policy) || !self::hasStringKeys($policy)) {
+                throw new InvalidArgumentException(sprintf(
+                    'HTTP cache policy for route "%s" must be an array or %s.',
+                    $routeName,
+                    HttpCachePolicy::class,
+                ));
+            }
+
+            $normalized[$routeName] = $policy;
+        }
+
+        $this->policies = $normalized;
+    }
 
     public function policyFor(ServerRequestInterface $request): ?HttpCachePolicy
     {
@@ -28,23 +55,30 @@ final class ConfigCachePolicyProvider implements CachePolicyProviderInterface
             return null;
         }
 
-        return $this->resolved[$match->name] ??= $this->resolvePolicy($match->name, $this->policies[$match->name]);
+        return $this->resolved[$match->name] ??= $this->resolvePolicy($this->policies[$match->name]);
     }
 
-    private function resolvePolicy(string $routeName, mixed $policy): HttpCachePolicy
+    /**
+     * @param HttpCachePolicy|array<string, mixed> $policy
+     */
+    private function resolvePolicy(HttpCachePolicy|array $policy): HttpCachePolicy
     {
-        if ($policy instanceof HttpCachePolicy) {
-            return $policy;
+        return $policy instanceof HttpCachePolicy
+            ? $policy
+            : HttpCachePolicy::fromArray($policy);
+    }
+
+    /**
+     * @param array<array-key, mixed> $value
+     */
+    private static function hasStringKeys(array $value): bool
+    {
+        foreach (array_keys($value) as $key) {
+            if (!is_string($key)) {
+                return false;
+            }
         }
 
-        if (is_array($policy)) {
-            return HttpCachePolicy::fromArray($policy);
-        }
-
-        throw new InvalidArgumentException(sprintf(
-            'HTTP cache policy for route "%s" must be an array or %s.',
-            $routeName,
-            HttpCachePolicy::class,
-        ));
+        return true;
     }
 }
