@@ -14,6 +14,7 @@ use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 final readonly class ResponseCacheMiddlewareFactory
@@ -38,6 +39,7 @@ final readonly class ResponseCacheMiddlewareFactory
             streamFactory: $container->get(StreamFactoryInterface::class),
             debugHeader: $config->bool(ConfigKey::DEBUG_HEADER, false),
             maxEntryBytes: $maxEntryBytes,
+            logger: $container->has(LoggerInterface::class) ? $container->get(LoggerInterface::class) : null,
         );
     }
 }
