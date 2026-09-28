@@ -160,9 +160,11 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         $headers = [];
 
         foreach ($response->getHeaders() as $name => $values) {
-            if (!isset($blocked[strtolower($name)])) {
-                $headers[$name] = array_values($values);
+            if (!is_string($name) || isset($blocked[strtolower($name)])) {
+                continue;
             }
+
+            $headers[$name] = array_values($values);
         }
 
         return $headers;
