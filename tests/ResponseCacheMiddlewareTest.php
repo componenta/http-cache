@@ -388,6 +388,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testOriginOnlyPreconditionResponseIsNeverStoredUnderGenericKey(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [412]);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(412));
+        $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
+            ->withHeader('If-Match', '"stale"');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame(412, $response->getStatusCode());
+    }
+
     public function testIfUnmodifiedSinceIsForwardedToOriginInsteadOfEvaluatedByCache(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
