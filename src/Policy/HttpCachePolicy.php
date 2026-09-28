@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Policy;
 
+use Componenta\Http\HttpMethod;
 use InvalidArgumentException;
 
 final readonly class HttpCachePolicy
@@ -43,6 +44,10 @@ final readonly class HttpCachePolicy
 
         if ($allowAuthenticated && !$private) {
             throw new InvalidArgumentException('Authenticated HTTP caching requires a private cache policy.');
+        }
+
+        if ($private && !$allowAuthenticated) {
+            throw new InvalidArgumentException('Private HTTP caching requires credential partitioning.');
         }
 
         if ($cacheSetCookie) {
@@ -109,8 +114,8 @@ final readonly class HttpCachePolicy
 
             $method = strtoupper(trim($method));
 
-            if (!in_array($method, ['GET', 'HEAD'], true)) {
-                throw new InvalidArgumentException('HTTP response caching only supports GET and HEAD requests.');
+            if (!HttpMethod::isCacheable($method)) {
+                throw new InvalidArgumentException('HTTP response caching only supports cacheable GET and HEAD requests.');
             }
 
             if (!in_array($method, $normalized, true)) {
@@ -161,7 +166,7 @@ final readonly class HttpCachePolicy
 
             $header = strtolower(trim($header));
 
-            if (preg_match("@^[!#$%&'*+.^_`|~0-9A-Za-z-]+$@D", $header) !== 1) {
+            if (preg_match("@^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$@D", $header) !== 1) {
                 throw new InvalidArgumentException('HTTP cache policy vary headers must be valid HTTP field names.');
             }
 
