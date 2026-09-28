@@ -76,7 +76,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
 
             if ($cached !== null && $this->requestAcceptsCachedResponse($request, $cached, $policy)) {
-                return $this->cachedResponse($request, $cached);
+                try {
+                    return $this->cachedResponse($request, $cached);
+                } catch (Throwable) {
+                    $cached = null;
+                }
             }
         }
 
