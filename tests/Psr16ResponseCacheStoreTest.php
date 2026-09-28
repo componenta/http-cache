@@ -21,6 +21,21 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testStorePreservesOriginalBodyPosition(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $response = new Response(200, [], 'abcdef');
+        $response->getBody()->seek(3);
+
+        self::assertTrue($store->store('key', $response, 60));
+        self::assertSame(3, $response->getBody()->tell());
+
+        $cached = $store->fetch('key');
+        self::assertNotNull($cached);
+        self::assertSame('abcdef', $cached->body);
+    }
+
     public function testDoesNotStoreSetCookieResponse(): void
     {
         $cache = new ArrayCache();
