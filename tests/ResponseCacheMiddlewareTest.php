@@ -54,7 +54,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('Accept-Language', $response->getHeaderLine('Vary'));
     }
 
-    public function testAuthenticatedCachedResponseIsForcedPrivateAndVariesByCookie(): void
+    public function testAuthenticatedCachedResponseIsForcedPrivateAndVariesByCredentials(): void
     {
         $request = (new ServerRequest('GET', 'https://example.test/account'))
             ->withHeader('Authorization', 'Bearer secret')
@@ -68,7 +68,9 @@ final class ResponseCacheMiddlewareTest extends TestCase
                 self::assertSame(60, $ttl);
                 self::assertStringContainsString('private', strtolower($response->getHeaderLine('Cache-Control')));
                 self::assertStringNotContainsString('public', strtolower($response->getHeaderLine('Cache-Control')));
-                self::assertStringContainsString('cookie', strtolower($response->getHeaderLine('Vary')));
+                $vary = strtolower($response->getHeaderLine('Vary'));
+                self::assertStringContainsString('authorization', $vary);
+                self::assertStringContainsString('cookie', $vary);
 
                 return true;
             });
@@ -77,6 +79,24 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
 
         self::assertStringContainsString('private', strtolower($response->getHeaderLine('Cache-Control')));
+    }
+
+    public function testPrivatePolicyWithoutCredentialsBypassesSharedStore(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(200, [], 'origin'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/account'), $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
     }
 
     public function testSetCookieResponseIsNeverStored(): void
@@ -117,10 +137,10 @@ final class ResponseCacheMiddlewareTest extends TestCase
                 'Date' => ['Sun, 27 Sep 2026 20:00:00 GMT'],
                 'Expires' => ['Sun, 27 Sep 2026 20:01:00 GMT'],
                 'Content-Location' => ['/articles/1'],
-                'Vary' => ['Accept-Encoding'],
             ],
             body: 'hello',
             storedAt: time(),
+            freshUntil: time() + 60,
         ));
         $invalidator = $this->createMock(CacheInvalidatorInterface::class);
         $handler = $this->createMock(RequestHandlerInterface::class);
@@ -170,6 +190,62 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(504, $response->getStatusCode());
     }
 
+    public function testOnlyIfCachedWithoutPolicyDoesNotReachOrigin(): void
+    {
+        $policies = $this->createMock(CachePolicyProviderInterface::class);
+        $policies->method('policyFor')->willReturn(null);
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+        $request = (new ServerRequest('GET', 'https://example.test/articles'))
+            ->withHeader('Cache-Control', 'only-if-cached');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame(504, $response->getStatusCode());
+    }
+
+    public function testMinFreshRejectsEntryWithoutEnoughRemainingFreshness(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public, max-age=60']],
+            body: 'cached',
+            storedAt: time(),
+            freshUntil: time() + 5,
+        ));
+        $store->method('store')->willReturn(false);
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(200, [], 'origin'));
+        $request = (new ServerRequest('GET', 'https://example.test/articles'))
+            ->withHeader('Cache-Control', 'min-fresh=10');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [], '12345'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, maxEntryBytes: 4)
+            ->process(new ServerRequest('GET', 'https://example.test/large'), $handler);
+
+        self::assertFalse($response->hasHeader('ETag'));
+    }
+
     /**
      * @return array{CachePolicyProviderInterface, CacheKeyGeneratorInterface, ResponseCacheStoreInterface, CacheInvalidatorInterface}
      */
@@ -213,6 +289,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         CacheKeyGeneratorInterface $keys,
         ResponseCacheStoreInterface $store,
         CacheInvalidatorInterface $invalidator,
+        int $maxEntryBytes = 8_388_608,
     ): ResponseCacheMiddleware {
         $factory = new Psr17Factory();
 
@@ -223,6 +300,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             invalidator: $invalidator,
             responseFactory: $factory,
             streamFactory: $factory,
+            maxEntryBytes: $maxEntryBytes,
         );
     }
 }
