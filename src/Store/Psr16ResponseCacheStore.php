@@ -32,6 +32,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return null;
         }
 
+        /** @var array<string, mixed> $payload */
         $cached = CachedResponse::fromArray($payload);
 
         if ($cached === null) {
