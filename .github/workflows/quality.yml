@@ -34,4 +34,4 @@ jobs:
       - if: matrix.dependencies == 'lowest'
         run: composer update --no-interaction --prefer-dist --prefer-lowest --prefer-stable --no-progress
       - run: composer audit
-      - run: composer test
+      - run: composer check
