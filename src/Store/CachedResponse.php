@@ -18,11 +18,12 @@ final readonly class CachedResponse
         private(set) array $headers,
         private(set) string $body,
         private(set) int $storedAt,
+        private(set) int $ageAtStore = 0,
     ) {}
 
     public function age(int $now): int
     {
-        return max(0, $now - $this->storedAt);
+        return max(0, $this->ageAtStore + max(0, $now - $this->storedAt));
     }
 
     public function toResponse(
@@ -39,7 +40,7 @@ final readonly class CachedResponse
     }
 
     /**
-     * @return array{status:int,headers:array<string, list<string>>,body:string,storedAt:int}
+     * @return array{status:int,headers:array<string, list<string>>,body:string,storedAt:int,ageAtStore:int}
      */
     public function toArray(): array
     {
@@ -48,6 +49,7 @@ final readonly class CachedResponse
             'headers' => $this->headers,
             'body' => $this->body,
             'storedAt' => $this->storedAt,
+            'ageAtStore' => $this->ageAtStore,
         ];
     }
 
@@ -60,8 +62,19 @@ final readonly class CachedResponse
         $headers = $payload['headers'] ?? null;
         $body = $payload['body'] ?? null;
         $storedAt = $payload['storedAt'] ?? null;
+        $ageAtStore = $payload['ageAtStore'] ?? 0;
 
-        if (!is_int($status) || !is_array($headers) || !is_string($body) || !is_int($storedAt)) {
+        if (
+            !is_int($status)
+            || $status < 100
+            || $status > 599
+            || !is_array($headers)
+            || !is_string($body)
+            || !is_int($storedAt)
+            || $storedAt < 0
+            || !is_int($ageAtStore)
+            || $ageAtStore < 0
+        ) {
             return null;
         }
 
@@ -78,6 +91,6 @@ final readonly class CachedResponse
         }
 
         /** @var array<string, list<string>> $headers */
-        return new self($status, $headers, $body, $storedAt);
+        return new self($status, $headers, $body, $storedAt, $ageAtStore);
     }
 }
