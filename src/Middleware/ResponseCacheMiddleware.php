@@ -12,6 +12,7 @@ use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\EntityTag;
 use Componenta\Http\Cache\Protocol\HeaderList;
+use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Protocol\ResponseAge;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
@@ -97,6 +98,14 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         $requestTime = microtime(true);
         $response = $handler->handle($request);
         $responseTime = microtime(true);
+
+        if (
+            !$response->hasHeader(Header::DATE)
+            || HttpDate::parse($response->getHeaderLine(Header::DATE), (int) $responseTime) === null
+        ) {
+            $response = $response->withHeader(Header::DATE, HttpDate::format((int) $responseTime));
+        }
+
         $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
         $ttl = $this->responseTtl($response, $policy, $initialAge, $responseTime);
 
@@ -274,12 +283,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             $ttl = min($ttl, $remaining);
         } elseif ($response->hasHeader(Header::EXPIRES)) {
-            $expires = strtotime($response->getHeaderLine(Header::EXPIRES));
-            $date = $response->hasHeader(Header::DATE)
-                ? strtotime($response->getHeaderLine(Header::DATE))
-                : (int) $responseTime;
+            $expires = HttpDate::parse($response->getHeaderLine(Header::EXPIRES), (int) $responseTime);
+            $date = HttpDate::parse($response->getHeaderLine(Header::DATE), (int) $responseTime);
 
-            if ($expires === false || $date === false || $expires <= $date) {
+            if ($expires === null || $date === null || $expires <= $date) {
                 return null;
             }
 
@@ -290,6 +297,14 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
 
             $ttl = min($ttl, $remaining);
+        } else {
+            $remaining = $policy->ttl - $currentAge;
+
+            if ($remaining <= 0) {
+                return null;
+            }
+
+            $ttl = $remaining;
         }
 
         return max(1, $ttl);
@@ -408,21 +423,25 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        $condition = strtotime($request->getHeaderLine(Header::IF_MODIFIED_SINCE));
+        $condition = HttpDate::parse($request->getHeaderLine(Header::IF_MODIFIED_SINCE));
 
-        if ($condition === false) {
+        if ($condition === null) {
             return false;
         }
 
         if ($response->hasHeader(Header::LAST_MODIFIED)) {
-            $validator = strtotime($response->getHeaderLine(Header::LAST_MODIFIED));
+            $validator = HttpDate::parse($response->getHeaderLine(Header::LAST_MODIFIED));
+
+            if ($validator === null) {
+                return false;
+            }
         } elseif ($response->hasHeader(Header::DATE)) {
-            $validator = strtotime($response->getHeaderLine(Header::DATE));
+            $validator = HttpDate::parse($response->getHeaderLine(Header::DATE)) ?? $cached->storedAt;
         } else {
             $validator = $cached->storedAt;
         }
 
-        return $validator !== false && $validator <= $condition;
+        return $validator <= $condition;
     }
 
     private function bypassLookup(ServerRequestInterface $request): bool
