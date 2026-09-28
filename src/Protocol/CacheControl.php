@@ -10,20 +10,21 @@ final readonly class CacheControl
     private array $directives;
 
     /**
-     * @param list<string> $values
+     * @param array<string> $values
      */
     public static function fromValues(array $values): self
     {
         $directives = [];
 
         foreach (HeaderList::split($values) as $part) {
-            [$name, $argument] = array_pad(explode('=', $part, 2), 2, null);
-            $name = strtolower(trim($name));
+            $segments = explode('=', $part, 2);
+            $name = strtolower(trim($segments[0]));
 
             if ($name === '') {
                 continue;
             }
 
+            $argument = $segments[1] ?? null;
             $directives[$name][] = $argument === null ? null : trim($argument);
         }
 
