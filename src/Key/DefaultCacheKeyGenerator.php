@@ -26,7 +26,7 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
         $payload = [
             'method' => strtoupper($request->getMethod()),
             'target' => RequestTarget::identity($request),
-            'route' => $match?->name ?? '_unknown',
+            'route' => $match === null ? '_unknown' : $match->name,
             'policy' => $this->policyFingerprint($policy),
             'vary' => $this->varyHeaders($request, $policy),
             'tags' => $this->tags->versions($tags),
@@ -69,12 +69,12 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
         $headers = [];
 
         foreach ($policy->varyHeaders as $header) {
-            $headers[strtolower($header)] = $request->getHeader($header);
+            $headers[strtolower($header)] = array_values($request->getHeader($header));
         }
 
         if ($policy->allowAuthenticated) {
-            $headers[strtolower(Header::AUTHORIZATION)] = $request->getHeader(Header::AUTHORIZATION);
-            $headers[strtolower(Header::COOKIE)] = $request->getHeader(Header::COOKIE);
+            $headers[strtolower(Header::AUTHORIZATION)] = array_values($request->getHeader(Header::AUTHORIZATION));
+            $headers[strtolower(Header::COOKIE)] = array_values($request->getHeader(Header::COOKIE));
         }
 
         ksort($headers);
