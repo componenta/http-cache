@@ -7,6 +7,7 @@ namespace Componenta\Http\Cache\Invalidation;
 use Override;
 use Psr\SimpleCache\CacheInterface;
 use Random\RandomException;
+use RuntimeException;
 
 use function hrtime;
 use function random_int;
@@ -36,7 +37,9 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
     public function invalidateTags(array $tags): void
     {
         foreach ($tags as $tag) {
-            $this->cache->set($this->key($tag), $this->nextVersion($tag));
+            if (!$this->cache->set($this->key($tag), $this->nextVersion($tag))) {
+                throw new RuntimeException(sprintf('Unable to invalidate HTTP cache tag "%s".', $tag));
+            }
         }
     }
 
@@ -49,7 +52,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
 
     private function key(string $tag): string
     {
-        return $this->prefix . ':' . hash('xxh128', $tag);
+        return hash('sha256', $this->prefix . "\0" . $tag);
     }
 
     private function nextVersion(string $tag): int
