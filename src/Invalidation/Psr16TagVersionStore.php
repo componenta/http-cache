@@ -8,6 +8,7 @@ use Override;
 use Psr\SimpleCache\CacheInterface;
 use Random\RandomException;
 use RuntimeException;
+use stdClass;
 
 use function hrtime;
 use function random_int;
@@ -38,16 +39,32 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
     {
         foreach ($tags as $tag) {
             if (!$this->cache->set($this->key($tag), $this->nextVersion($tag))) {
-                throw new RuntimeException(sprintf('Unable to invalidate HTTP cache tag "%s".', $tag));
+                throw new RuntimeException('Unable to invalidate HTTP cache tag.');
             }
         }
     }
 
     private function version(string $tag): int
     {
-        $version = $this->cache->get($this->key($tag), 0);
+        $missing = new stdClass();
+        $key = $this->key($tag);
+        $version = $this->cache->get($key, $missing);
 
-        return is_int($version) ? $version : 0;
+        if ($version === $missing) {
+            return 0;
+        }
+
+        if (is_int($version) && $version >= 0) {
+            return $version;
+        }
+
+        $replacement = $this->generateVersion();
+
+        if (!$this->cache->set($key, $replacement)) {
+            throw new RuntimeException('Unable to repair HTTP cache tag generation.');
+        }
+
+        return $replacement;
     }
 
     private function key(string $tag): string
