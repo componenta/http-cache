@@ -12,6 +12,7 @@ use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\EntityTag;
 use Componenta\Http\Cache\Protocol\HeaderList;
+use Componenta\Http\Cache\Protocol\ResponseAge;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Componenta\Http\Header;
@@ -83,17 +84,21 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS');
         }
 
+        $requestTime = microtime(true);
         $response = $handler->handle($request);
-        $ttl = $this->responseTtl($response, $policy);
+        $responseTime = microtime(true);
+        $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
+        $ttl = $this->responseTtl($response, $policy, $initialAge, $responseTime);
 
         if ($ttl === null) {
             return $this->withDebugHeader($response, 'BYPASS');
         }
 
         $response = $this->prepareResponse($request, $response, $policy);
+        $storedResponse = $response->withHeader(Header::AGE, (string) $initialAge);
 
         try {
-            $stored = $this->store->store($key, $response, $ttl);
+            $stored = $this->store->store($key, $storedResponse, $ttl);
         } catch (Throwable) {
             $stored = false;
         }
@@ -197,8 +202,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         return $policy->allowsStatus($cached->status);
     }
 
-    private function responseTtl(ResponseInterface $response, HttpCachePolicy $policy): ?int
-    {
+    private function responseTtl(
+        ResponseInterface $response,
+        HttpCachePolicy $policy,
+        int $currentAge,
+        float $responseTime,
+    ): ?int {
         if (!$policy->allowsStatus($response->getStatusCode())) {
             return null;
         }
@@ -243,7 +252,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         if (is_int($freshness)) {
-            $remaining = $freshness - $this->responseCurrentAge($response);
+            $remaining = $freshness - $currentAge;
 
             if ($remaining <= 0) {
                 return null;
@@ -254,13 +263,13 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $expires = strtotime($response->getHeaderLine(Header::EXPIRES));
             $date = $response->hasHeader(Header::DATE)
                 ? strtotime($response->getHeaderLine(Header::DATE))
-                : time();
+                : (int) $responseTime;
 
             if ($expires === false || $date === false || $expires <= $date) {
                 return null;
             }
 
-            $remaining = ($expires - $date) - $this->responseCurrentAge($response);
+            $remaining = ($expires - $date) - $currentAge;
 
             if ($remaining <= 0) {
                 return null;
@@ -270,20 +279,6 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         return max(1, $ttl);
-    }
-
-    private function responseCurrentAge(ResponseInterface $response): int
-    {
-        $age = $response->getHeaderLine(Header::AGE);
-        $ageValue = preg_match('/^[0-9]+$/D', $age) === 1 ? min(PHP_INT_MAX, (int) $age) : 0;
-
-        if (!$response->hasHeader(Header::DATE)) {
-            return $ageValue;
-        }
-
-        $date = strtotime($response->getHeaderLine(Header::DATE));
-
-        return $date === false ? $ageValue : max($ageValue, max(0, time() - $date));
     }
 
     private function prepareResponse(
