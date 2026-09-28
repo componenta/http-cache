@@ -38,6 +38,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
             'Connection' => 'X-Trace',
             'X-Trace' => 'secret',
             'Keep-Alive' => 'timeout=5',
+            'Proxy-Authentication-Info' => 'secret',
             'X-End-To-End' => 'kept',
         ], 'body');
 
@@ -48,6 +49,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertArrayNotHasKey('Connection', $cached->headers);
         self::assertArrayNotHasKey('X-Trace', $cached->headers);
         self::assertArrayNotHasKey('Keep-Alive', $cached->headers);
+        self::assertArrayNotHasKey('Proxy-Authentication-Info', $cached->headers);
         self::assertSame(['kept'], $cached->headers['X-End-To-End']);
     }
 
