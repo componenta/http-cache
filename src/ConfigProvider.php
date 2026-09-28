@@ -61,6 +61,7 @@ final class ConfigProvider extends BaseConfigProvider
             ConfigKey::POLICIES => [],
             ConfigKey::DEBUG_HEADER => false,
             ConfigKey::KEY_PREFIX => 'http-cache',
+            ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
         ];
     }
 }
