@@ -94,7 +94,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
         $store->expects(self::never())->method('store');
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
 
         $response = $this->middleware($policies, $keys, $store, $invalidator)
@@ -229,7 +229,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             storedAt: time(),
             freshUntil: time() + 60,
         ));
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
@@ -257,7 +257,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             storedAt: time(),
             freshUntil: time() + 60,
         ));
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
         $request = (new ServerRequest('GET', 'https://example.test/missing'))
@@ -344,13 +344,13 @@ final class ResponseCacheMiddlewareTest extends TestCase
 
     public function testOnlyIfCachedWithoutPolicyDoesNotReachOrigin(): void
     {
-        $policies = $this->createMock(CachePolicyProviderInterface::class);
+        $policies = $this->createStub(CachePolicyProviderInterface::class);
         $policies->method('policyFor')->willReturn(null);
         $keys = $this->createMock(CacheKeyGeneratorInterface::class);
         $keys->expects(self::never())->method('generate');
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
         $request = (new ServerRequest('GET', 'https://example.test/articles'))
@@ -375,7 +375,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             freshUntil: time() - 1,
         ));
         $store->method('store')->willReturn(false);
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
 
         $response = $this->middleware($policies, $keys, $store, $invalidator)
@@ -398,7 +398,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             freshUntil: time() + 5,
         ));
         $store->method('store')->willReturn(false);
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
         $request = (new ServerRequest('GET', 'https://example.test/articles'))
             ->withHeader('Cache-Control', 'min-fresh=10');
@@ -429,7 +429,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
         $store->method('store')->willReturn(false);
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
             ->withHeader('If-Match', '"abc"');
@@ -448,7 +448,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
         $store->expects(self::never())->method('store');
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(412));
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
             ->withHeader('If-Match', '"stale"');
@@ -466,7 +466,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
         $store->method('store')->willReturn(false);
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
             ->withHeader('If-Unmodified-Since', 'Sun, 27 Sep 2026 20:00:00 GMT');
@@ -484,7 +484,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willThrowException(new RuntimeException('backend unavailable'));
         $store->method('store')->willReturn(false);
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())
             ->method('warning')
@@ -502,10 +502,10 @@ final class ResponseCacheMiddlewareTest extends TestCase
 
     /**
      * @return array{
-     *     CachePolicyProviderInterface&MockObject,
-     *     CacheKeyGeneratorInterface&MockObject,
+     *     CachePolicyProviderInterface,
+     *     CacheKeyGeneratorInterface,
      *     ResponseCacheStoreInterface&MockObject,
-     *     CacheInvalidatorInterface&MockObject
+     *     CacheInvalidatorInterface
      * }
      */
     private function cacheMissDependencies(HttpCachePolicy $policy): array
@@ -513,29 +513,23 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
         $store = $this->createMock(ResponseCacheStoreInterface::class);
-        $store->method('fetch')->willReturn(null);
-        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $store->expects(self::any())->method('fetch')->willReturn(null);
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
 
         return [$policies, $keys, $store, $invalidator];
     }
 
-    /**
-     * @return CachePolicyProviderInterface&MockObject
-     */
     private function policyProvider(HttpCachePolicy $policy): CachePolicyProviderInterface
     {
-        $provider = $this->createMock(CachePolicyProviderInterface::class);
+        $provider = $this->createStub(CachePolicyProviderInterface::class);
         $provider->method('policyFor')->willReturn($policy);
 
         return $provider;
     }
 
-    /**
-     * @return CacheKeyGeneratorInterface&MockObject
-     */
     private function keyGenerator(): CacheKeyGeneratorInterface
     {
-        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys = $this->createStub(CacheKeyGeneratorInterface::class);
         $keys->method('generate')->willReturn('cache-key');
 
         return $keys;
