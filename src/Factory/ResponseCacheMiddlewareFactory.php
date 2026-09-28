@@ -14,12 +14,20 @@ use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use RuntimeException;
 
 final readonly class ResponseCacheMiddlewareFactory
 {
+    private const int DEFAULT_MAX_ENTRY_BYTES = 8_388_608;
+
     public function __invoke(ContainerInterface $container): ResponseCacheMiddleware
     {
         $config = $container->get(Config::class);
+        $maxEntryBytes = $config->get(ConfigKey::MAX_ENTRY_BYTES, self::DEFAULT_MAX_ENTRY_BYTES);
+
+        if (!is_int($maxEntryBytes) || $maxEntryBytes <= 0) {
+            throw new RuntimeException(sprintf('%s config value must be a positive integer.', ConfigKey::MAX_ENTRY_BYTES));
+        }
 
         return new ResponseCacheMiddleware(
             policies: $container->get(CachePolicyProviderInterface::class),
@@ -29,6 +37,7 @@ final readonly class ResponseCacheMiddlewareFactory
             responseFactory: $container->get(ResponseFactoryInterface::class),
             streamFactory: $container->get(StreamFactoryInterface::class),
             debugHeader: $config->bool(ConfigKey::DEBUG_HEADER, false),
+            maxEntryBytes: $maxEntryBytes,
         );
     }
 }
