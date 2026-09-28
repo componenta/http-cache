@@ -48,6 +48,18 @@ final class Psr16TagVersionStoreTest extends TestCase
         self::assertSame($versions['product:42'], $cache->storedValue);
     }
 
+    public function testPersistedZeroGenerationIsReplaced(): void
+    {
+        $cache = new TagSpyCache();
+        $cache->storedValue = 0;
+        $store = new Psr16TagVersionStore($cache);
+
+        $versions = $store->versions(['product:42']);
+
+        self::assertGreaterThan(0, $versions['product:42']);
+        self::assertSame($versions['product:42'], $cache->storedValue);
+    }
+
     public function testCorruptedGenerationRepairFailureIsVisible(): void
     {
         $cache = new TagSpyCache();
