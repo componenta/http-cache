@@ -99,12 +99,17 @@ final readonly class CachedResponse
         }
 
         foreach ($headers as $name => $values) {
-            if (!is_string($name) || !is_array($values) || array_is_list($values) === false) {
+            if (
+                !is_string($name)
+                || preg_match("@^[!#$%&'*+.^_\\x60|~0-9A-Za-z-]+$@D", $name) !== 1
+                || !is_array($values)
+                || array_is_list($values) === false
+            ) {
                 return null;
             }
 
             foreach ($values as $value) {
-                if (!is_string($value)) {
+                if (!is_string($value) || str_contains($value, "\r") || str_contains($value, "\n")) {
                     return null;
                 }
             }
