@@ -98,6 +98,20 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertNull($store->fetch('key'));
     }
 
+    public function testCachedAgeSaturatesInsteadOfOverflowing(): void
+    {
+        $cached = new \Componenta\Http\Cache\Store\CachedResponse(
+            status: 200,
+            headers: [],
+            body: 'body',
+            storedAt: 0,
+            ageAtStore: PHP_INT_MAX,
+            freshUntil: PHP_INT_MAX,
+        );
+
+        self::assertSame(PHP_INT_MAX, $cached->age(time()));
+    }
+
     public function testPersistsFreshnessDeadlineFromStorageTtl(): void
     {
         $cache = new ArrayCache();
