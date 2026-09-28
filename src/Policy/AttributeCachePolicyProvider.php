@@ -11,7 +11,6 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use ReflectionClass;
-use ReflectionMethod;
 
 final readonly class AttributeCachePolicyProvider implements CachePolicyProviderInterface
 {
@@ -63,6 +62,10 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
 
     private function policyForClassAndMethod(object|string $target, ?string $method): ?HttpCachePolicy
     {
+        if (is_string($target) && !class_exists($target)) {
+            return null;
+        }
+
         $class = new ReflectionClass($target);
 
         if ($method !== null && $class->hasMethod($method)) {
