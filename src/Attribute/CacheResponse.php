@@ -68,4 +68,19 @@ final readonly class CacheResponse
         $this->private = $policy->private;
         $this->generateEtag = $policy->generateEtag;
     }
+
+    public function toPolicy(): HttpCachePolicy
+    {
+        return new HttpCachePolicy(
+            ttl: $this->ttl,
+            methods: $this->methods,
+            statuses: $this->statuses,
+            varyHeaders: $this->varyHeaders,
+            tags: $this->tags,
+            allowAuthenticated: $this->allowAuthenticated,
+            cacheSetCookie: $this->cacheSetCookie,
+            private: $this->private,
+            generateEtag: $this->generateEtag,
+        );
+    }
 }
