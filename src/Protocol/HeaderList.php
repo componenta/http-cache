@@ -7,7 +7,7 @@ namespace Componenta\Http\Cache\Protocol;
 final class HeaderList
 {
     /**
-     * @param list<string> $values
+     * @param array<string> $values
      * @return list<string>
      */
     public static function split(array $values): array
