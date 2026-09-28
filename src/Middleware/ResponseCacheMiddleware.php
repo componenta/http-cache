@@ -181,7 +181,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function isRequestCacheable(ServerRequestInterface $request, HttpCachePolicy $policy): bool
     {
-        if (!$policy->allowsMethod($request->getMethod()) || $request->hasHeader(Header::RANGE)) {
+        if (
+            !$policy->allowsMethod($request->getMethod())
+            || $request->hasHeader(Header::RANGE)
+            || $request->hasHeader(Header::IF_MATCH)
+            || $request->hasHeader(Header::IF_UNMODIFIED_SINCE)
+        ) {
             return false;
         }
 
