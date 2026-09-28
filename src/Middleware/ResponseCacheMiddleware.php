@@ -24,6 +24,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
 final readonly class ResponseCacheMiddleware implements MiddlewareInterface
@@ -39,6 +40,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         private StreamFactoryInterface $streamFactory,
         private bool $debugHeader = false,
         private int $maxEntryBytes = 8_388_608,
+        private ?LoggerInterface $logger = null,
     ) {
         if ($maxEntryBytes <= 0) {
             throw new InvalidArgumentException('HTTP cache maximum entry size must be greater than zero.');
@@ -62,7 +64,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         try {
             $key = $this->keys->generate($request, $policy);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->logger?->warning('HTTP cache key generation failed.', ['exception' => $exception]);
+
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'BYPASS')
                 : $this->withDebugHeader($handler->handle($request), 'BYPASS');
@@ -71,14 +75,16 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         if (!$this->bypassLookup($request)) {
             try {
                 $cached = $this->store->fetch($key);
-            } catch (Throwable) {
+            } catch (Throwable $exception) {
+                $this->logger?->warning('HTTP cache read failed.', ['exception' => $exception]);
                 $cached = null;
             }
 
             if ($cached !== null && $this->requestAcceptsCachedResponse($request, $cached, $policy)) {
                 try {
                     return $this->cachedResponse($request, $cached);
-                } catch (Throwable) {
+                } catch (Throwable $exception) {
+                    $this->logger?->warning('HTTP cached response reconstruction failed.', ['exception' => $exception]);
                     $cached = null;
                 }
             }
@@ -103,7 +109,8 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         try {
             $stored = $this->store->store($key, $storedResponse, $ttl);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
             $stored = false;
         }
 
@@ -120,7 +127,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         try {
             $this->invalidator->invalidateTags([RequestTarget::cacheTag($request)]);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->logger?->error('HTTP cache invalidation failed after unsafe request.', ['exception' => $exception]);
+
             return $this->withDebugHeader($response, 'INVALIDATION-FAILED');
         }
 
