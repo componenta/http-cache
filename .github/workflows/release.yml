@@ -28,7 +28,7 @@ jobs:
       - run: composer validate --strict
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: composer audit
-      - run: composer test
+      - run: composer check
 
   publish:
     if: startsWith(github.event.head_commit.message, 'Release v')
