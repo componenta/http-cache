@@ -57,16 +57,28 @@ final readonly class CacheControl
 
         $value = $values[0];
 
-        if ($value === '' || preg_match('/^[0-9]+$/D', $value) !== 1 || strlen($value) > 18) {
+        if (preg_match('/^"([0-9]+)"$/D', $value, $matches) === 1) {
+            $value = $matches[1];
+        }
+
+        if ($value === '' || preg_match('/^[0-9]+$/D', $value) !== 1) {
             return false;
         }
 
-        $integer = (int) $value;
+        $normalized = ltrim($value, '0');
 
-        if ((string) $integer !== ltrim($value, '0') && !preg_match('/^0+$/D', $value)) {
-            return false;
+        if ($normalized === '') {
+            return 0;
         }
 
-        return $integer;
+        $max = (string) PHP_INT_MAX;
+
+        if (strlen($normalized) > strlen($max)
+            || (strlen($normalized) === strlen($max) && strcmp($normalized, $max) > 0)
+        ) {
+            return PHP_INT_MAX;
+        }
+
+        return (int) $normalized;
     }
 }
