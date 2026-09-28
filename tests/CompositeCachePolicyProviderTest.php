@@ -32,9 +32,9 @@ final class CompositeCachePolicyProviderTest extends TestCase
     {
         $attribute = new HttpCachePolicy(ttl: 90);
         $first = $this->createMock(CachePolicyProviderInterface::class);
-        $first->method('policyFor')->willReturn(null);
+        $first->expects(self::once())->method('policyFor')->willReturn(null);
         $fallback = $this->createMock(CachePolicyProviderInterface::class);
-        $fallback->method('policyFor')->willReturn($attribute);
+        $fallback->expects(self::once())->method('policyFor')->willReturn($attribute);
 
         $provider = new CompositeCachePolicyProvider([$first, $fallback]);
 
