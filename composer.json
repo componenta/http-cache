@@ -18,6 +18,7 @@
     },
     "require-dev": {
         "nyholm/psr7": "^1.8",
+        "phpstan/phpstan": "^2.2.14",
         "phpunit/phpunit": "^12.0"
     },
     "autoload": {
@@ -31,7 +32,12 @@
         }
     },
     "scripts": {
-        "test": "@php vendor/bin/phpunit tests"
+        "test": "@php vendor/bin/phpunit tests",
+        "phpstan": "@php vendor/bin/phpstan analyse src tests --level=max --no-progress",
+        "check": [
+            "@phpstan",
+            "@test"
+        ]
     },
     "config": {
         "sort-packages": true
