@@ -6,6 +6,7 @@ namespace Componenta\Http\Cache\Factory;
 
 use Componenta\Config\Config;
 use Componenta\Http\Cache\ConfigKey;
+use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
 use Componenta\Http\Cache\Policy\CachePolicyProviderInterface;
@@ -24,6 +25,7 @@ final readonly class ResponseCacheMiddlewareFactory
             policies: $container->get(CachePolicyProviderInterface::class),
             keys: $container->get(CacheKeyGeneratorInterface::class),
             store: $container->get(ResponseCacheStoreInterface::class),
+            invalidator: $container->get(CacheInvalidatorInterface::class),
             responseFactory: $container->get(ResponseFactoryInterface::class),
             streamFactory: $container->get(StreamFactoryInterface::class),
             debugHeader: $config->bool(ConfigKey::DEBUG_HEADER, false),
