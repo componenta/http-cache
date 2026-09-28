@@ -11,9 +11,19 @@ final class EntityTag
      */
     public static function ifNoneMatch(array $ifNoneMatchValues, ?string $current): bool
     {
-        foreach (HeaderList::split($ifNoneMatchValues) as $candidate) {
-            if ($candidate === '*') {
-                return true;
+        $candidates = HeaderList::split($ifNoneMatchValues);
+
+        if ($candidates === []) {
+            return false;
+        }
+
+        if (in_array('*', $candidates, true)) {
+            return count($candidates) === 1;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (self::opaqueTag($candidate) === null) {
+                return false;
             }
 
             if ($current !== null && self::weaklyEqual($candidate, $current)) {
