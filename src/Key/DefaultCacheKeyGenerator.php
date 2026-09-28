@@ -20,44 +20,20 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
     public function generate(ServerRequestInterface $request, HttpCachePolicy $policy): string
     {
         $match = MatchRouteMiddleware::getMatchResultFromRequest($request);
-        $routeName = $match?->name ?? '_unknown';
+        $uri = $request->getUri();
         $payload = [
             'method' => strtoupper($request->getMethod()),
-            'route' => $routeName,
-            'path' => $request->getUri()->getPath(),
-            'query' => $this->normalizedQuery($request),
+            'scheme' => strtolower($uri->getScheme()),
+            'host' => strtolower($uri->getHost()),
+            'port' => $uri->getPort(),
+            'route' => $match?->name ?? '_unknown',
+            'path' => $uri->getPath(),
+            'query' => $uri->getQuery(),
             'vary' => $this->varyHeaders($request, $policy),
             'tags' => $this->tags->versions($policy->tags),
         ];
 
-        return $this->prefix . ':' . hash('xxh128', json_encode($payload, JSON_THROW_ON_ERROR));
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function normalizedQuery(ServerRequestInterface $request): array
-    {
-        $query = [];
-        parse_str($request->getUri()->getQuery(), $query);
-
-        return $this->sortRecursive($query);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function sortRecursive(array $value): array
-    {
-        foreach ($value as $key => $item) {
-            if (is_array($item)) {
-                $value[$key] = $this->sortRecursive($item);
-            }
-        }
-
-        ksort($value);
-
-        return $value;
+        return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR));
     }
 
     /**
