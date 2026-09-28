@@ -22,10 +22,10 @@ final readonly class HttpCachePolicy
     private(set) array $tags;
 
     /**
-     * @param list<string> $methods
-     * @param list<int> $statuses
-     * @param list<string> $varyHeaders
-     * @param list<string> $tags
+     * @param array<array-key, mixed> $methods
+     * @param array<array-key, mixed> $statuses
+     * @param array<array-key, mixed> $varyHeaders
+     * @param array<array-key, mixed> $tags
      */
     public function __construct(
         private(set) int $ttl,
@@ -96,7 +96,7 @@ final readonly class HttpCachePolicy
     }
 
     /**
-     * @param list<string> $methods
+     * @param array<array-key, mixed> $methods
      * @return list<string>
      */
     private static function normalizeMethods(array $methods): array
@@ -127,7 +127,7 @@ final readonly class HttpCachePolicy
     }
 
     /**
-     * @param list<int> $statuses
+     * @param array<array-key, mixed> $statuses
      * @return list<int>
      */
     private static function normalizeStatuses(array $statuses): array
@@ -152,7 +152,7 @@ final readonly class HttpCachePolicy
     }
 
     /**
-     * @param list<string> $headers
+     * @param array<array-key, mixed> $headers
      * @return list<string>
      */
     private static function normalizeHeaderNames(array $headers): array
@@ -183,7 +183,7 @@ final readonly class HttpCachePolicy
     }
 
     /**
-     * @param list<string> $tags
+     * @param array<array-key, mixed> $tags
      * @return list<string>
      */
     private static function normalizeTags(array $tags): array
