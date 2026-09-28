@@ -24,7 +24,13 @@ final readonly class CachedResponse
 
     public function age(int $now): int
     {
-        return max(0, $this->ageAtStore + max(0, $now - $this->storedAt));
+        $residentTime = max(0, $now - $this->storedAt);
+
+        if ($this->ageAtStore > PHP_INT_MAX - $residentTime) {
+            return PHP_INT_MAX;
+        }
+
+        return $this->ageAtStore + $residentTime;
     }
 
     public function remainingFreshness(int $now): ?int
