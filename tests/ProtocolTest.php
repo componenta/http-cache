@@ -46,6 +46,7 @@ final class ProtocolTest extends TestCase
     public function testHttpDateAcceptsAllThreeRfcFormats(): void
     {
         $expected = gmmktime(8, 49, 37, 11, 6, 1994);
+        self::assertIsInt($expected);
 
         self::assertSame($expected, HttpDate::parse('Sun, 06 Nov 1994 08:49:37 GMT'));
         self::assertSame($expected, HttpDate::parse('Sunday, 06-Nov-94 08:49:37 GMT', 1_788_000_000));
@@ -68,7 +69,7 @@ final class ProtocolTest extends TestCase
     {
         self::assertSame(
             'Sun, 06 Nov 1994 08:49:37 GMT',
-            HttpDate::format(gmmktime(8, 49, 37, 11, 6, 1994)),
+            HttpDate::format((int) gmmktime(8, 49, 37, 11, 6, 1994)),
         );
     }
 
