@@ -90,7 +90,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
     {
         $body = $response->getBody();
 
-        if (!$body->isSeekable()) {
+        if (!$body->isSeekable() || !$body->isReadable()) {
             return null;
         }
 
@@ -100,28 +100,30 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return null;
         }
 
+        $position = $body->tell();
         $contents = '';
-        $body->rewind();
 
-        while (!$body->eof()) {
-            $chunk = $body->read(8192);
+        try {
+            $body->rewind();
 
-            if ($chunk === '') {
-                break;
+            while (!$body->eof()) {
+                $chunk = $body->read(8192);
+
+                if ($chunk === '') {
+                    break;
+                }
+
+                if (strlen($contents) + strlen($chunk) > $maxBytes) {
+                    return null;
+                }
+
+                $contents .= $chunk;
             }
 
-            if (strlen($contents) + strlen($chunk) > $maxBytes) {
-                $body->rewind();
-
-                return null;
-            }
-
-            $contents .= $chunk;
+            return $contents;
+        } finally {
+            $body->seek($position);
         }
-
-        $body->rewind();
-
-        return $contents;
     }
 
     /**
