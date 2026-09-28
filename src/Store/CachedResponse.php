@@ -19,11 +19,21 @@ final readonly class CachedResponse
         private(set) string $body,
         private(set) int $storedAt,
         private(set) int $ageAtStore = 0,
+        private(set) ?int $freshUntil = null,
     ) {}
 
     public function age(int $now): int
     {
         return max(0, $this->ageAtStore + max(0, $now - $this->storedAt));
+    }
+
+    public function remainingFreshness(int $now): ?int
+    {
+        if ($this->freshUntil === null) {
+            return null;
+        }
+
+        return max(0, $this->freshUntil - $now);
     }
 
     public function toResponse(
@@ -40,7 +50,14 @@ final readonly class CachedResponse
     }
 
     /**
-     * @return array{status:int,headers:array<string, list<string>>,body:string,storedAt:int,ageAtStore:int}
+     * @return array{
+     *     status:int,
+     *     headers:array<string, list<string>>,
+     *     body:string,
+     *     storedAt:int,
+     *     ageAtStore:int,
+     *     freshUntil:?int
+     * }
      */
     public function toArray(): array
     {
@@ -50,6 +67,7 @@ final readonly class CachedResponse
             'body' => $this->body,
             'storedAt' => $this->storedAt,
             'ageAtStore' => $this->ageAtStore,
+            'freshUntil' => $this->freshUntil,
         ];
     }
 
@@ -63,6 +81,7 @@ final readonly class CachedResponse
         $body = $payload['body'] ?? null;
         $storedAt = $payload['storedAt'] ?? null;
         $ageAtStore = $payload['ageAtStore'] ?? 0;
+        $freshUntil = $payload['freshUntil'] ?? null;
 
         if (
             !is_int($status)
@@ -74,6 +93,7 @@ final readonly class CachedResponse
             || $storedAt < 0
             || !is_int($ageAtStore)
             || $ageAtStore < 0
+            || ($freshUntil !== null && (!is_int($freshUntil) || $freshUntil < 0))
         ) {
             return null;
         }
@@ -91,6 +111,6 @@ final readonly class CachedResponse
         }
 
         /** @var array<string, list<string>> $headers */
-        return new self($status, $headers, $body, $storedAt, $ageAtStore);
+        return new self($status, $headers, $body, $storedAt, $ageAtStore, $freshUntil);
     }
 }
