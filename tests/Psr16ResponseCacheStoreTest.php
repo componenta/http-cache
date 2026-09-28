@@ -36,6 +36,17 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame('abcdef', $cached->body);
     }
 
+    public function testRejectsUnsupportedProtocolStatuses(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+
+        self::assertFalse($store->store('informational', new Response(101), 60));
+        self::assertFalse($store->store('partial', new Response(206), 60));
+        self::assertFalse($store->store('not-modified', new Response(304), 60));
+        self::assertSame([], $cache->values);
+    }
+
     public function testDoesNotStoreSetCookieResponse(): void
     {
         $cache = new ArrayCache();
