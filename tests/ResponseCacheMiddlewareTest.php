@@ -10,6 +10,7 @@ use Componenta\Http\Cache\Key\RequestTarget;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
 use Componenta\Http\Cache\Policy\CachePolicyProviderInterface;
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
+use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -99,6 +100,56 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/account'), $handler);
 
         self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testMissingDateIsAddedBeforeCaching(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())
+            ->method('store')
+            ->willReturnCallback(static function (string $key, ResponseInterface $response): bool {
+                self::assertTrue($response->hasHeader('Date'));
+                self::assertNotNull(HttpDate::parse($response->getHeaderLine('Date')));
+
+                return true;
+            });
+        $handler = $this->handler(new Response(200, [], 'hello'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
+
+        self::assertTrue($response->hasHeader('Date'));
+        self::assertNotNull(HttpDate::parse($response->getHeaderLine('Date')));
+    }
+
+    public function testInvalidDateIsReplacedBeforeCaching(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())
+            ->method('store')
+            ->willReturnCallback(static function (string $key, ResponseInterface $response): bool {
+                self::assertNotSame('tomorrow', $response->getHeaderLine('Date'));
+                self::assertNotNull(HttpDate::parse($response->getHeaderLine('Date')));
+
+                return true;
+            });
+        $handler = $this->handler(new Response(200, ['Date' => 'tomorrow'], 'hello'));
+
+        $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
+    }
+
+    public function testPolicyFreshnessDoesNotCacheResponseOlderThanPolicyTtl(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, ['Age' => '120'], 'hello'));
+
+        $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
     }
 
     public function testSetCookieResponseIsNeverStored(): void
