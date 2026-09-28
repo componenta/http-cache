@@ -260,6 +260,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return null;
         }
 
+        if (!$this->storageIsPermitted($response, $policy, $cacheControl)) {
+            return null;
+        }
+
         if (!$this->varyIsCompatible($response, $policy)) {
             return null;
         }
@@ -313,6 +317,31 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         return max(1, $ttl);
+    }
+
+    private function storageIsPermitted(
+        ResponseInterface $response,
+        HttpCachePolicy $policy,
+        CacheControl $cacheControl,
+    ): bool {
+        if (!$response->hasHeader(Header::CACHE_CONTROL) || $policy->private) {
+            return true;
+        }
+
+        if (
+            $cacheControl->has('public')
+            || $cacheControl->has('max-age')
+            || $response->hasHeader(Header::EXPIRES)
+            || $cacheControl->has('s-maxage')
+        ) {
+            return true;
+        }
+
+        return in_array(
+            $response->getStatusCode(),
+            [200, 203, 204, 300, 301, 308, 404, 405, 410, 414, 501],
+            true,
+        );
     }
 
     private function prepareResponse(
