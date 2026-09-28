@@ -41,7 +41,7 @@ final class ConfigProvider extends BaseConfigProvider
     }
 
     #[Override]
-    protected function getAutowires(): array
+    protected function getInvokables(): array
     {
         return [
             AttributeCachePolicyProvider::class,
