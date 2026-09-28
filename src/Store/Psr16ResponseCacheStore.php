@@ -41,12 +41,18 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
+        $storedAt = time();
+        $freshUntil = $ttl > PHP_INT_MAX - $storedAt
+            ? PHP_INT_MAX
+            : $storedAt + $ttl;
+
         $cached = new CachedResponse(
             status: $response->getStatusCode(),
             headers: $this->storableHeaders($response),
             body: $contents,
-            storedAt: time(),
+            storedAt: $storedAt,
             ageAtStore: $this->currentAge($response),
+            freshUntil: $freshUntil,
         );
 
         return $this->cache->set($key, $cached->toArray(), $ttl);
