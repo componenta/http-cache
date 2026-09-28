@@ -1,0 +1,132 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Componenta\Http\Cache\Tests;
+
+use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
+use DateInterval;
+use Nyholm\Psr7\Response;
+use PHPUnit\Framework\TestCase;
+use Psr\SimpleCache\CacheInterface;
+
+final class Psr16ResponseCacheStoreTest extends TestCase
+{
+    public function testRejectsBodyLargerThanConfiguredLimit(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 4);
+
+        self::assertFalse($store->store('key', new Response(200, [], '12345'), 60));
+        self::assertSame([], $cache->values);
+    }
+
+    public function testDoesNotStoreSetCookieResponse(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+
+        self::assertFalse($store->store('key', new Response(200, ['Set-Cookie' => 'session=abc'], 'body'), 60));
+        self::assertSame([], $cache->values);
+    }
+
+    public function testRemovesConnectionSpecificHeadersBeforeStorage(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $response = new Response(200, [
+            'Connection' => 'X-Trace',
+            'X-Trace' => 'secret',
+            'Keep-Alive' => 'timeout=5',
+            'X-End-To-End' => 'kept',
+        ], 'body');
+
+        self::assertTrue($store->store('key', $response, 60));
+
+        $cached = $store->fetch('key');
+        self::assertNotNull($cached);
+        self::assertArrayNotHasKey('Connection', $cached->headers);
+        self::assertArrayNotHasKey('X-Trace', $cached->headers);
+        self::assertArrayNotHasKey('Keep-Alive', $cached->headers);
+        self::assertSame(['kept'], $cached->headers['X-End-To-End']);
+    }
+
+    public function testPreservesUpstreamAgeWhenServingCachedResponse(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $response = new Response(200, ['Age' => '120'], 'body');
+
+        self::assertTrue($store->store('key', $response, 60));
+
+        $cached = $store->fetch('key');
+        self::assertNotNull($cached);
+        self::assertGreaterThanOrEqual(120, $cached->age(time()));
+    }
+}
+
+final class ArrayCache implements CacheInterface
+{
+    /** @var array<string, mixed> */
+    public array $values = [];
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->values[$key] ?? $default;
+    }
+
+    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    {
+        $this->values[$key] = $value;
+
+        return true;
+    }
+
+    public function delete(string $key): bool
+    {
+        unset($this->values[$key]);
+
+        return true;
+    }
+
+    public function clear(): bool
+    {
+        $this->values = [];
+
+        return true;
+    }
+
+    public function getMultiple(iterable $keys, mixed $default = null): iterable
+    {
+        $values = [];
+
+        foreach ($keys as $key) {
+            $values[$key] = $this->get($key, $default);
+        }
+
+        return $values;
+    }
+
+    public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
+    {
+        foreach ($values as $key => $value) {
+            $this->set((string) $key, $value, $ttl);
+        }
+
+        return true;
+    }
+
+    public function deleteMultiple(iterable $keys): bool
+    {
+        foreach ($keys as $key) {
+            $this->delete((string) $key);
+        }
+
+        return true;
+    }
+
+    public function has(string $key): bool
+    {
+        return array_key_exists($key, $this->values);
+    }
+}
