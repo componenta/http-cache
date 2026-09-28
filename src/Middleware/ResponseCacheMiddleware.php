@@ -562,7 +562,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     }
 
     /**
-     * @param list<string> $values
+     * @param array<string> $values
      */
     private function headerHasDirective(array $values, string $directive): bool
     {
