@@ -27,11 +27,38 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
             'method' => strtoupper($request->getMethod()),
             'target' => RequestTarget::identity($request),
             'route' => $match?->name ?? '_unknown',
+            'policy' => $this->policyFingerprint($policy),
             'vary' => $this->varyHeaders($request, $policy),
             'tags' => $this->tags->versions($tags),
         ];
 
         return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * @return array{
+     *     ttl:int,
+     *     methods:list<string>,
+     *     statuses:list<int>,
+     *     vary:list<string>,
+     *     tags:list<string>,
+     *     private:bool,
+     *     allowAuthenticated:bool,
+     *     generateEtag:bool
+     * }
+     */
+    private function policyFingerprint(HttpCachePolicy $policy): array
+    {
+        return [
+            'ttl' => $policy->ttl,
+            'methods' => $policy->methods,
+            'statuses' => $policy->statuses,
+            'vary' => $policy->varyHeaders,
+            'tags' => $policy->tags,
+            'private' => $policy->private,
+            'allowAuthenticated' => $policy->allowAuthenticated,
+            'generateEtag' => $policy->generateEtag,
+        ];
     }
 
     /**
