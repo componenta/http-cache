@@ -5,9 +5,9 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
-        "componenta/config": "^1.0 || ^2.0.2",
+        "componenta/config": "^2.0.2 || ^3.0.0",
         "componenta/http": "^1.0",
-        "componenta/router": "^1.0 || ^2.0.1",
+        "componenta/router": "^2.0.1 || ^3.0.0",
         "psr/container": "^2.0",
         "psr/http-message": "^2.0",
         "psr/http-server-middleware": "^1.0",
