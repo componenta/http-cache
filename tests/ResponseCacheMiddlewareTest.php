@@ -210,6 +210,54 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertNotSame('', $response->getHeaderLine('Expires'));
     }
 
+    public function testConditionalRequestDoesNotTurnCachedErrorInto304(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [404]);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 404,
+            headers: ['Cache-Control' => ['public, max-age=60']],
+            body: 'missing',
+            storedAt: time(),
+            freshUntil: time() + 60,
+        ));
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+        $request = (new ServerRequest('GET', 'https://example.test/missing'))
+            ->withHeader('If-None-Match', '*');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame(404, $response->getStatusCode());
+        self::assertSame('missing', (string) $response->getBody());
+    }
+
+    public function testGeneratedEtagIncludesRepresentationMetadata(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+
+        [$policiesA, $keysA, $storeA, $invalidatorA] = $this->cacheMissDependencies($policy);
+        $storeA->method('store')->willReturn(false);
+        $html = $this->middleware($policiesA, $keysA, $storeA, $invalidatorA)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, ['Content-Type' => 'text/html'], 'same-body')),
+        );
+
+        [$policiesB, $keysB, $storeB, $invalidatorB] = $this->cacheMissDependencies($policy);
+        $storeB->method('store')->willReturn(false);
+        $json = $this->middleware($policiesB, $keysB, $storeB, $invalidatorB)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, ['Content-Type' => 'application/json'], 'same-body')),
+        );
+
+        self::assertNotSame('', $html->getHeaderLine('ETag'));
+        self::assertNotSame('', $json->getHeaderLine('ETag'));
+        self::assertNotSame($html->getHeaderLine('ETag'), $json->getHeaderLine('ETag'));
+    }
+
     public function testHeadResponseDoesNotGetBodyDerivedEtag(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
