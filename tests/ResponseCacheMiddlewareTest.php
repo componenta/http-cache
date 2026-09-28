@@ -215,7 +215,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policy = new HttpCachePolicy(ttl: 60);
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
-        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
             headers: [
@@ -249,7 +249,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policy = new HttpCachePolicy(ttl: 60, statuses: [404]);
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
-        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 404,
             headers: ['Cache-Control' => ['public, max-age=60']],
@@ -366,7 +366,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policy = new HttpCachePolicy(ttl: 60);
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
-        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
             headers: ['Cache-Control' => ['public, max-age=60']],
@@ -389,7 +389,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policy = new HttpCachePolicy(ttl: 60);
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
-        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
             headers: ['Cache-Control' => ['public, max-age=60']],
@@ -428,7 +428,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $keys = $this->keyGenerator();
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
-        $store->method('store')->willReturn(false);
+        $store->expects(self::never())->method('store');
         $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
@@ -465,7 +465,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $keys = $this->keyGenerator();
         $store = $this->createMock(ResponseCacheStoreInterface::class);
         $store->expects(self::never())->method('fetch');
-        $store->method('store')->willReturn(false);
+        $store->expects(self::never())->method('store');
         $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->handler(new Response(200, [], 'origin'));
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
@@ -481,7 +481,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policy = new HttpCachePolicy(ttl: 60);
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
-        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willThrowException(new RuntimeException('backend unavailable'));
         $store->method('store')->willReturn(false);
         $invalidator = $this->createStub(CacheInvalidatorInterface::class);
