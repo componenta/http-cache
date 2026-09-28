@@ -166,6 +166,10 @@ final readonly class HttpCachePolicy
 
             $header = strtolower(trim($header));
 
+            if ($header === '*') {
+                throw new InvalidArgumentException('HTTP cache policy cannot declare Vary "*".');
+            }
+
             if (preg_match("@^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$@D", $header) !== 1) {
                 throw new InvalidArgumentException('HTTP cache policy vary headers must be valid HTTP field names.');
             }
