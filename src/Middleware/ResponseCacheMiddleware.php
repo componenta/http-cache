@@ -413,6 +413,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function bypassLookup(ServerRequestInterface $request): bool
     {
+        if ($request->hasHeader(Header::IF_MATCH) || $request->hasHeader(Header::IF_UNMODIFIED_SINCE)) {
+            return true;
+        }
+
         $cacheControl = $this->requestCacheControl($request);
         $maxAge = $cacheControl->integer('max-age');
 
