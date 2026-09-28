@@ -28,7 +28,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
     {
         $payload = $this->cache->get($key);
 
-        if (!is_array($payload)) {
+        if (!is_array($payload) || !self::hasStringKeys($payload)) {
             return null;
         }
 
@@ -152,7 +152,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             strtolower(Header::UPGRADE) => true,
         ];
 
-        foreach (HeaderList::split($response->getHeader(Header::CONNECTION)) as $name) {
+        foreach (HeaderList::split(array_values($response->getHeader(Header::CONNECTION))) as $name) {
             $blocked[strtolower($name)] = true;
         }
 
@@ -160,11 +160,25 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
         foreach ($response->getHeaders() as $name => $values) {
             if (!isset($blocked[strtolower($name)])) {
-                $headers[$name] = $values;
+                $headers[$name] = array_values($values);
             }
         }
 
         return $headers;
+    }
+
+    /**
+     * @param array<array-key, mixed> $value
+     */
+    private static function hasStringKeys(array $value): bool
+    {
+        foreach (array_keys($value) as $key) {
+            if (!is_string($key)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
