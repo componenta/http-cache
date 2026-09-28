@@ -71,6 +71,13 @@ final class HttpCachePolicyTest extends TestCase
         new HttpCachePolicy(ttl: 60, cacheSetCookie: true);
     }
 
+    public function testRejectsWildcardVaryPolicy(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new HttpCachePolicy(ttl: 60, varyHeaders: ['*']);
+    }
+
     public function testRejectsInvalidVaryFieldName(): void
     {
         $this->expectException(InvalidArgumentException::class);
