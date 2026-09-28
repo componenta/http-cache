@@ -41,6 +41,7 @@ final class ConfigCachePolicyProvider implements CachePolicyProviderInterface
                 ));
             }
 
+            /** @var array<string, mixed> $policy */
             $normalized[$routeName] = $policy;
         }
 
