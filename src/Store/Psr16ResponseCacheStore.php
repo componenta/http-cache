@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Store;
 
 use Componenta\Http\Cache\Protocol\HeaderList;
+use Componenta\Http\Cache\Protocol\ResponseAge;
+use Componenta\Http\Header;
 use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\SimpleCache\CacheInterface;
@@ -31,11 +33,18 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
     public function store(string $key, ResponseInterface $response, int $ttl): bool
     {
-        if ($ttl <= 0 || $response->hasHeader('Set-Cookie') || $response->hasHeader('Content-Range')) {
+        if ($ttl <= 0 || $response->hasHeader(Header::SET_COOKIE) || $response->hasHeader(Header::CONTENT_RANGE)) {
             return false;
         }
 
-        $contents = $this->readBody($response);
+        $headers = $this->storableHeaders($response);
+        $headerBytes = $this->headerBytes($headers);
+
+        if ($headerBytes >= $this->maxEntryBytes) {
+            return false;
+        }
+
+        $contents = $this->readBody($response, $this->maxEntryBytes - $headerBytes);
 
         if ($contents === null) {
             return false;
@@ -48,10 +57,10 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
         $cached = new CachedResponse(
             status: $response->getStatusCode(),
-            headers: $this->storableHeaders($response),
+            headers: $headers,
             body: $contents,
             storedAt: $storedAt,
-            ageAtStore: $this->currentAge($response),
+            ageAtStore: ResponseAge::atReceipt($response),
             freshUntil: $freshUntil,
         );
 
@@ -63,7 +72,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         $this->cache->delete($key);
     }
 
-    private function readBody(ResponseInterface $response): ?string
+    private function readBody(ResponseInterface $response, int $maxBytes): ?string
     {
         $body = $response->getBody();
 
@@ -73,7 +82,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
         $size = $body->getSize();
 
-        if ($size !== null && $size > $this->maxEntryBytes) {
+        if ($size !== null && $size > $maxBytes) {
             return null;
         }
 
@@ -87,7 +96,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
                 break;
             }
 
-            if (strlen($contents) + strlen($chunk) > $this->maxEntryBytes) {
+            if (strlen($contents) + strlen($chunk) > $maxBytes) {
                 $body->rewind();
 
                 return null;
@@ -107,18 +116,18 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
     private function storableHeaders(ResponseInterface $response): array
     {
         $blocked = [
-            'connection' => true,
-            'keep-alive' => true,
-            'proxy-authenticate' => true,
-            'proxy-authorization' => true,
+            strtolower(Header::CONNECTION) => true,
+            strtolower(Header::KEEP_ALIVE) => true,
+            strtolower(Header::PROXY_AUTHENTICATE) => true,
+            strtolower(Header::PROXY_AUTHORIZATION) => true,
             'proxy-connection' => true,
-            'te' => true,
-            'trailer' => true,
-            'transfer-encoding' => true,
-            'upgrade' => true,
+            strtolower(Header::TE) => true,
+            strtolower(Header::TRAILER) => true,
+            strtolower(Header::TRANSFER_ENCODING) => true,
+            strtolower(Header::UPGRADE) => true,
         ];
 
-        foreach (HeaderList::split($response->getHeader('Connection')) as $name) {
+        foreach (HeaderList::split($response->getHeader(Header::CONNECTION)) as $name) {
             $blocked[strtolower($name)] = true;
         }
 
@@ -133,17 +142,23 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         return $headers;
     }
 
-    private function currentAge(ResponseInterface $response): int
+    /**
+     * @param array<string, list<string>> $headers
+     */
+    private function headerBytes(array $headers): int
     {
-        $age = $response->getHeaderLine('Age');
-        $ageValue = preg_match('/^[0-9]+$/D', $age) === 1 ? min(PHP_INT_MAX, (int) $age) : 0;
+        $bytes = 0;
 
-        if (!$response->hasHeader('Date')) {
-            return $ageValue;
+        foreach ($headers as $name => $values) {
+            foreach ($values as $value) {
+                $bytes += strlen($name) + strlen($value) + 4;
+
+                if ($bytes >= $this->maxEntryBytes) {
+                    return $bytes;
+                }
+            }
         }
 
-        $date = strtotime($response->getHeaderLine('Date'));
-
-        return $date === false ? $ageValue : max($ageValue, max(0, time() - $date));
+        return $bytes;
     }
 }
