@@ -64,6 +64,38 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertGreaterThanOrEqual(120, $cached->age(time()));
     }
 
+    public function testRejectsPoisonedCachedHeaderMetadata(): void
+    {
+        $cache = new ArrayCache();
+        $cache->values['key'] = [
+            'status' => 200,
+            'headers' => ["X-Test\r\nInjected" => ['value']],
+            'body' => 'body',
+            'storedAt' => time(),
+            'ageAtStore' => 0,
+            'freshUntil' => time() + 60,
+        ];
+        $store = new Psr16ResponseCacheStore($cache);
+
+        self::assertNull($store->fetch('key'));
+    }
+
+    public function testRejectsOversizedCachedPayloadOnRead(): void
+    {
+        $cache = new ArrayCache();
+        $cache->values['key'] = [
+            'status' => 200,
+            'headers' => [],
+            'body' => '12345',
+            'storedAt' => time(),
+            'ageAtStore' => 0,
+            'freshUntil' => time() + 60,
+        ];
+        $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 4);
+
+        self::assertNull($store->fetch('key'));
+    }
+
     public function testPersistsFreshnessDeadlineFromStorageTtl(): void
     {
         $cache = new ArrayCache();
