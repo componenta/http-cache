@@ -211,6 +211,29 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(504, $response->getStatusCode());
     }
 
+    public function testExpiredStoredEntryIsRejectedEvenIfBackendReturnsIt(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public, max-age=60']],
+            body: 'stale',
+            storedAt: time() - 120,
+            freshUntil: time() - 1,
+        ));
+        $store->method('store')->willReturn(false);
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(200, [], 'origin'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
     public function testMinFreshRejectsEntryWithoutEnoughRemainingFreshness(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
