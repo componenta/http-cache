@@ -15,7 +15,7 @@ final class ResponseAge
         float $responseTime,
     ): int {
         $apparentAge = self::apparentAge($response, $responseTime);
-        $responseDelay = max(0, (int) ceil($responseTime - $requestTime));
+        $responseDelay = max(0, (int) ($responseTime - $requestTime));
         $correctedAgeValue = self::ageValue($response);
 
         if ($correctedAgeValue > PHP_INT_MAX - $responseDelay) {
@@ -43,13 +43,13 @@ final class ResponseAge
             return 0;
         }
 
-        $dateValue = strtotime($response->getHeaderLine(Header::DATE));
+        $dateValue = HttpDate::parse($response->getHeaderLine(Header::DATE));
 
-        if ($dateValue === false) {
+        if ($dateValue === null) {
             return 0;
         }
 
-        return max(0, (int) ceil($responseTime - $dateValue));
+        return max(0, (int) ($responseTime - $dateValue));
     }
 
     private static function ageValue(ResponseInterface $response): int
