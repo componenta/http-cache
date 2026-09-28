@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Factory;
 
+use Componenta\Http\Cache\Internal\ContainerService;
 use Componenta\Http\Cache\Policy\AttributeCachePolicyProvider;
 use Componenta\Http\Cache\Policy\CompositeCachePolicyProvider;
 use Componenta\Http\Cache\Policy\ConfigCachePolicyProvider;
@@ -14,8 +15,8 @@ final readonly class CompositeCachePolicyProviderFactory
     public function __invoke(ContainerInterface $container): CompositeCachePolicyProvider
     {
         return new CompositeCachePolicyProvider([
-            $container->get(ConfigCachePolicyProvider::class),
-            $container->get(AttributeCachePolicyProvider::class),
+            ContainerService::get($container, ConfigCachePolicyProvider::class),
+            ContainerService::get($container, AttributeCachePolicyProvider::class),
         ]);
     }
 }
