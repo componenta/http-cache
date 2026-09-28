@@ -88,7 +88,9 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
         try {
             return random_int(1, PHP_INT_MAX);
         } catch (RandomException) {
-            return max(1, hrtime(true));
+            $time = hrtime(true);
+
+            return is_int($time) ? max(1, $time) : max(1, (int) $time);
         }
     }
 }
