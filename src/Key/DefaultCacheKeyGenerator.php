@@ -20,17 +20,15 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
     public function generate(ServerRequestInterface $request, HttpCachePolicy $policy): string
     {
         $match = MatchRouteMiddleware::getMatchResultFromRequest($request);
-        $uri = $request->getUri();
+        $tags = $policy->tags;
+        $tags[] = RequestTarget::cacheTag($request);
+        $tags = array_values(array_unique($tags));
         $payload = [
             'method' => strtoupper($request->getMethod()),
-            'scheme' => strtolower($uri->getScheme()),
-            'host' => strtolower($uri->getHost()),
-            'port' => $uri->getPort(),
+            'target' => RequestTarget::identity($request),
             'route' => $match?->name ?? '_unknown',
-            'path' => $uri->getPath(),
-            'query' => $uri->getQuery(),
             'vary' => $this->varyHeaders($request, $policy),
-            'tags' => $this->tags->versions($policy->tags),
+            'tags' => $this->tags->versions($tags),
         ];
 
         return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR));
