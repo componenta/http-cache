@@ -28,7 +28,21 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
     {
         $payload = $this->cache->get($key);
 
-        return is_array($payload) ? CachedResponse::fromArray($payload) : null;
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $cached = CachedResponse::fromArray($payload);
+
+        if ($cached === null) {
+            return null;
+        }
+
+        if (strlen($cached->body) + $this->headerBytes($cached->headers) > $this->maxEntryBytes) {
+            return null;
+        }
+
+        return $cached;
     }
 
     public function store(string $key, ResponseInterface $response, int $ttl): bool
