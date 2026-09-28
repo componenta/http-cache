@@ -43,7 +43,6 @@ final class Psr16TagVersionStoreTest extends TestCase
 
         $versions = $store->versions(['product:42']);
 
-        self::assertIsInt($versions['product:42']);
         self::assertGreaterThan(0, $versions['product:42']);
         self::assertSame($versions['product:42'], $cache->storedValue);
     }
@@ -114,6 +113,9 @@ final class TagSpyCache implements CacheInterface
         return [];
     }
 
+    /**
+     * @param iterable<string, mixed> $values
+     */
     public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
     {
         return true;
