@@ -54,7 +54,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
             return 0;
         }
 
-        if (is_int($version) && $version >= 0) {
+        if (is_int($version) && $version > 0) {
             return $version;
         }
 
