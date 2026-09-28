@@ -382,6 +382,21 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         $context = hash_init('sha256');
+
+        foreach ([
+            Header::CONTENT_TYPE,
+            Header::CONTENT_ENCODING,
+            Header::CONTENT_LANGUAGE,
+            Header::CONTENT_LOCATION,
+            Header::CONTENT_DIGEST,
+        ] as $header) {
+            hash_update($context, strtolower($header) . "\0");
+
+            foreach ($response->getHeader($header) as $value) {
+                hash_update($context, $value . "\0");
+            }
+        }
+
         $bytes = 0;
         $body->rewind();
 
@@ -413,6 +428,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         ResponseInterface $response,
         CachedResponse $cached,
     ): bool {
+        if ($cached->status !== 200) {
+            return false;
+        }
+
         if ($request->hasHeader(Header::IF_NONE_MATCH)) {
             $etag = $response->hasHeader(Header::ETAG) ? $response->getHeaderLine(Header::ETAG) : null;
 
