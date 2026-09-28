@@ -7,7 +7,7 @@ namespace Componenta\Http\Cache\Protocol;
 final class EntityTag
 {
     /**
-     * @param list<string> $ifNoneMatchValues
+     * @param array<string> $ifNoneMatchValues
      */
     public static function ifNoneMatch(array $ifNoneMatchValues, ?string $current): bool
     {
