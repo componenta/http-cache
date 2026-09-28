@@ -18,6 +18,8 @@ use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Log\LoggerInterface;
+use RuntimeException;
 
 final class ResponseCacheMiddlewareTest extends TestCase
 {
@@ -282,6 +284,30 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testCacheReadFailureIsLoggedAndFallsBackToOrigin(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willThrowException(new RuntimeException('backend unavailable'));
+        $store->method('store')->willReturn(false);
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())
+            ->method('warning')
+            ->with(
+                'HTTP cache read failed.',
+                self::callback(static fn(array $context): bool => $context['exception'] instanceof RuntimeException),
+            );
+        $handler = $this->handler(new Response(200, [], 'origin'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, logger: $logger)
+            ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
     /**
      * @return array{CachePolicyProviderInterface, CacheKeyGeneratorInterface, ResponseCacheStoreInterface, CacheInvalidatorInterface}
      */
@@ -326,6 +352,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         ResponseCacheStoreInterface $store,
         CacheInvalidatorInterface $invalidator,
         int $maxEntryBytes = 8_388_608,
+        ?LoggerInterface $logger = null,
     ): ResponseCacheMiddleware {
         $factory = new Psr17Factory();
 
@@ -337,6 +364,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             responseFactory: $factory,
             streamFactory: $factory,
             maxEntryBytes: $maxEntryBytes,
+            logger: $logger,
         );
     }
 }
