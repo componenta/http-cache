@@ -41,6 +41,14 @@ final readonly class HttpCachePolicy
             throw new InvalidArgumentException('HTTP cache policy TTL must be greater than zero.');
         }
 
+        if ($allowAuthenticated && !$private) {
+            throw new InvalidArgumentException('Authenticated HTTP caching requires a private cache policy.');
+        }
+
+        if ($cacheSetCookie) {
+            throw new InvalidArgumentException('Caching responses with Set-Cookie is not supported safely.');
+        }
+
         $this->methods = self::normalizeMethods($methods);
         $this->statuses = self::normalizeStatuses($statuses);
         $this->varyHeaders = self::normalizeHeaderNames($varyHeaders);
@@ -101,6 +109,10 @@ final readonly class HttpCachePolicy
 
             $method = strtoupper(trim($method));
 
+            if (!in_array($method, ['GET', 'HEAD'], true)) {
+                throw new InvalidArgumentException('HTTP response caching only supports GET and HEAD requests.');
+            }
+
             if (!in_array($method, $normalized, true)) {
                 $normalized[] = $method;
             }
@@ -122,8 +134,8 @@ final readonly class HttpCachePolicy
         $normalized = [];
 
         foreach ($statuses as $status) {
-            if (!is_int($status) || $status < 100 || $status > 599) {
-                throw new InvalidArgumentException('HTTP cache policy statuses must be valid HTTP status codes.');
+            if (!is_int($status) || $status < 200 || $status > 599 || in_array($status, [206, 304], true)) {
+                throw new InvalidArgumentException('HTTP cache policy statuses must be supported final response status codes.');
             }
 
             if (!in_array($status, $normalized, true)) {
@@ -148,6 +160,10 @@ final readonly class HttpCachePolicy
             }
 
             $header = strtolower(trim($header));
+
+            if (preg_match("@^[!#$%&'*+.^_`|~0-9A-Za-z-]+$@D", $header) !== 1) {
+                throw new InvalidArgumentException('HTTP cache policy vary headers must be valid HTTP field names.');
+            }
 
             if (!in_array($header, $normalized, true)) {
                 $normalized[] = $header;
