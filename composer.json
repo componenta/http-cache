@@ -4,14 +4,15 @@
     "type": "library",
     "license": "MIT",
     "require": {
-        "php": "^8.4",
         "componenta/config": "^2.0.2 || ^3.0.0",
         "componenta/http": "^1.0",
         "componenta/router": "^2.0.1 || ^3.0.0",
+        "php": "^8.4",
         "psr/container": "^2.0",
+        "psr/http-factory": "^1.1",
         "psr/http-message": "^2.0",
-        "psr/http-server-middleware": "^1.0",
         "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0",
         "psr/simple-cache": "^3.0"
     },
     "require-dev": {
