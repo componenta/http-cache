@@ -6,6 +6,7 @@ namespace Componenta\Http\Cache\Factory;
 
 use Componenta\Config\Config;
 use Componenta\Http\Cache\ConfigKey;
+use Componenta\Http\Cache\Internal\ContainerService;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
@@ -23,23 +24,27 @@ final readonly class ResponseCacheMiddlewareFactory
 
     public function __invoke(ContainerInterface $container): ResponseCacheMiddleware
     {
-        $config = $container->get(Config::class);
+        $config = ContainerService::get($container, Config::class);
         $maxEntryBytes = $config->get(ConfigKey::MAX_ENTRY_BYTES, self::DEFAULT_MAX_ENTRY_BYTES);
 
         if (!is_int($maxEntryBytes) || $maxEntryBytes <= 0) {
             throw new RuntimeException(sprintf('%s config value must be a positive integer.', ConfigKey::MAX_ENTRY_BYTES));
         }
 
+        $logger = $container->has(LoggerInterface::class)
+            ? ContainerService::get($container, LoggerInterface::class)
+            : null;
+
         return new ResponseCacheMiddleware(
-            policies: $container->get(CachePolicyProviderInterface::class),
-            keys: $container->get(CacheKeyGeneratorInterface::class),
-            store: $container->get(ResponseCacheStoreInterface::class),
-            invalidator: $container->get(CacheInvalidatorInterface::class),
-            responseFactory: $container->get(ResponseFactoryInterface::class),
-            streamFactory: $container->get(StreamFactoryInterface::class),
+            policies: ContainerService::get($container, CachePolicyProviderInterface::class),
+            keys: ContainerService::get($container, CacheKeyGeneratorInterface::class),
+            store: ContainerService::get($container, ResponseCacheStoreInterface::class),
+            invalidator: ContainerService::get($container, CacheInvalidatorInterface::class),
+            responseFactory: ContainerService::get($container, ResponseFactoryInterface::class),
+            streamFactory: ContainerService::get($container, StreamFactoryInterface::class),
             debugHeader: $config->bool(ConfigKey::DEBUG_HEADER, false),
             maxEntryBytes: $maxEntryBytes,
-            logger: $container->has(LoggerInterface::class) ? $container->get(LoggerInterface::class) : null,
+            logger: $logger,
         );
     }
 }
