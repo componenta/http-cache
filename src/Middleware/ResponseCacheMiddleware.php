@@ -382,7 +382,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     {
         $body = $response->getBody();
 
-        if (!$body->isSeekable()) {
+        if (!$body->isSeekable() || !$body->isReadable()) {
             return null;
         }
 
@@ -402,30 +402,32 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
         }
 
+        $position = $body->tell();
         $bytes = 0;
-        $body->rewind();
 
-        while (!$body->eof()) {
-            $chunk = $body->read(8192);
+        try {
+            $body->rewind();
 
-            if ($chunk === '') {
-                break;
+            while (!$body->eof()) {
+                $chunk = $body->read(8192);
+
+                if ($chunk === '') {
+                    break;
+                }
+
+                $bytes += strlen($chunk);
+
+                if ($bytes > $this->maxEntryBytes) {
+                    return null;
+                }
+
+                hash_update($context, $chunk);
             }
 
-            $bytes += strlen($chunk);
-
-            if ($bytes > $this->maxEntryBytes) {
-                $body->rewind();
-
-                return null;
-            }
-
-            hash_update($context, $chunk);
+            return 'W/"' . hash_final($context) . '"';
+        } finally {
+            $body->seek($position);
         }
-
-        $body->rewind();
-
-        return 'W/"' . hash_final($context) . '"';
     }
 
     private function isNotModified(
