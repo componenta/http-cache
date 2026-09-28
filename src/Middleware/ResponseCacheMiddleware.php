@@ -15,6 +15,8 @@ use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Componenta\Http\Header;
+use Componenta\Http\HttpMethod;
+use InvalidArgumentException;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -35,7 +37,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         private ResponseFactoryInterface $responseFactory,
         private StreamFactoryInterface $streamFactory,
         private bool $debugHeader = false,
-    ) {}
+        private int $maxEntryBytes = 8_388_608,
+    ) {
+        if ($maxEntryBytes <= 0) {
+            throw new InvalidArgumentException('HTTP cache maximum entry size must be greater than zero.');
+        }
+    }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -43,13 +50,14 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return $this->handleUnsafe($request, $handler);
         }
 
+        $onlyIfCached = $this->requestCacheControl($request)->has('only-if-cached');
         $policy = $this->policies->policyFor($request);
 
         if ($policy === null || !$this->isRequestCacheable($request, $policy)) {
-            return $handler->handle($request);
+            return $onlyIfCached
+                ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
+                : $handler->handle($request);
         }
-
-        $onlyIfCached = $this->requestCacheControl($request)->has('only-if-cached');
 
         try {
             $key = $this->keys->generate($request, $policy);
@@ -128,12 +136,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         foreach ([
             Header::CACHE_CONTROL,
-            'Content-Location',
-            'Date',
+            Header::CONTENT_LOCATION,
+            Header::DATE,
             Header::ETAG,
-            'Expires',
+            Header::EXPIRES,
             Header::VARY,
-            'Last-Modified',
+            Header::LAST_MODIFIED,
             Header::AGE,
         ] as $header) {
             if ($cached->hasHeader($header)) {
@@ -146,7 +154,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function isRequestCacheable(ServerRequestInterface $request, HttpCachePolicy $policy): bool
     {
-        if (!$policy->allowsMethod($request->getMethod()) || $request->hasHeader('Range')) {
+        if (!$policy->allowsMethod($request->getMethod()) || $request->hasHeader(Header::RANGE)) {
             return false;
         }
 
@@ -154,8 +162,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        return $policy->allowAuthenticated
-            || (!$request->hasHeader(Header::AUTHORIZATION) && !$request->hasHeader(Header::COOKIE));
+        $hasCredentials = $this->hasCredentials($request);
+
+        return $policy->private ? $hasCredentials : !$hasCredentials;
     }
 
     private function requestAcceptsCachedResponse(
@@ -163,14 +172,26 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         CachedResponse $cached,
         HttpCachePolicy $policy,
     ): bool {
-        $maxAge = $this->requestCacheControl($request)->integer('max-age');
+        $cacheControl = $this->requestCacheControl($request);
+        $maxAge = $cacheControl->integer('max-age');
+        $minFresh = $cacheControl->integer('min-fresh');
 
-        if ($maxAge === false) {
+        if ($maxAge === false || $minFresh === false) {
             return false;
         }
 
-        if (is_int($maxAge) && $cached->age(time()) > $maxAge) {
+        $now = time();
+
+        if (is_int($maxAge) && $cached->age($now) > $maxAge) {
             return false;
+        }
+
+        if (is_int($minFresh)) {
+            $remainingFreshness = $cached->remainingFreshness($now);
+
+            if ($remainingFreshness === null || $remainingFreshness < $minFresh) {
+                return false;
+            }
         }
 
         return $policy->allowsStatus($cached->status);
@@ -182,7 +203,13 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return null;
         }
 
-        if ($response->hasHeader(Header::SET_COOKIE) || $response->hasHeader('Content-Range')) {
+        if ($response->hasHeader(Header::SET_COOKIE) || $response->hasHeader(Header::CONTENT_RANGE)) {
+            return null;
+        }
+
+        $size = $response->getBody()->getSize();
+
+        if ($size !== null && $size > $this->maxEntryBytes) {
             return null;
         }
 
@@ -223,9 +250,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
 
             $ttl = min($ttl, $remaining);
-        } elseif ($response->hasHeader('Expires')) {
-            $expires = strtotime($response->getHeaderLine('Expires'));
-            $date = $response->hasHeader('Date') ? strtotime($response->getHeaderLine('Date')) : time();
+        } elseif ($response->hasHeader(Header::EXPIRES)) {
+            $expires = strtotime($response->getHeaderLine(Header::EXPIRES));
+            $date = $response->hasHeader(Header::DATE)
+                ? strtotime($response->getHeaderLine(Header::DATE))
+                : time();
 
             if ($expires === false || $date === false || $expires <= $date) {
                 return null;
@@ -248,11 +277,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         $age = $response->getHeaderLine(Header::AGE);
         $ageValue = preg_match('/^[0-9]+$/D', $age) === 1 ? min(PHP_INT_MAX, (int) $age) : 0;
 
-        if (!$response->hasHeader('Date')) {
+        if (!$response->hasHeader(Header::DATE)) {
             return $ageValue;
         }
 
-        $date = strtotime($response->getHeaderLine('Date'));
+        $date = strtotime($response->getHeaderLine(Header::DATE));
 
         return $date === false ? $ageValue : max($ageValue, max(0, time() - $date));
     }
@@ -274,7 +303,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $vary[] = $header;
         }
 
-        if ($policy->allowAuthenticated && $request->hasHeader(Header::COOKIE)) {
+        if ($policy->private && $request->getHeaderLine(Header::AUTHORIZATION) !== '') {
+            $vary[] = strtolower(Header::AUTHORIZATION);
+        }
+
+        if ($policy->private && $request->getHeaderLine(Header::COOKIE) !== '') {
             $vary[] = strtolower(Header::COOKIE);
         }
 
@@ -286,7 +319,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         if (
             $policy->generateEtag
-            && strtoupper($request->getMethod()) === 'GET'
+            && strtoupper($request->getMethod()) === HttpMethod::GET
             && !$response->hasHeader(Header::ETAG)
         ) {
             $etag = $this->weakEtag($response);
@@ -325,6 +358,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         $context = hash_init('sha256');
+        $bytes = 0;
         $body->rewind();
 
         while (!$body->eof()) {
@@ -332,6 +366,14 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             if ($chunk === '') {
                 break;
+            }
+
+            $bytes += strlen($chunk);
+
+            if ($bytes > $this->maxEntryBytes) {
+                $body->rewind();
+
+                return null;
             }
 
             hash_update($context, $chunk);
@@ -353,20 +395,20 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return EntityTag::ifNoneMatch($request->getHeader(Header::IF_NONE_MATCH), $etag);
         }
 
-        if (!$request->hasHeader('If-Modified-Since')) {
+        if (!$request->hasHeader(Header::IF_MODIFIED_SINCE)) {
             return false;
         }
 
-        $condition = strtotime($request->getHeaderLine('If-Modified-Since'));
+        $condition = strtotime($request->getHeaderLine(Header::IF_MODIFIED_SINCE));
 
         if ($condition === false) {
             return false;
         }
 
-        if ($response->hasHeader('Last-Modified')) {
-            $validator = strtotime($response->getHeaderLine('Last-Modified'));
-        } elseif ($response->hasHeader('Date')) {
-            $validator = strtotime($response->getHeaderLine('Date'));
+        if ($response->hasHeader(Header::LAST_MODIFIED)) {
+            $validator = strtotime($response->getHeaderLine(Header::LAST_MODIFIED));
+        } elseif ($response->hasHeader(Header::DATE)) {
+            $validator = strtotime($response->getHeaderLine(Header::DATE));
         } else {
             $validator = $cached->storedAt;
         }
@@ -400,7 +442,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         $allowed = $policy->varyHeaders;
 
-        if ($policy->allowAuthenticated) {
+        if ($policy->private) {
             $allowed[] = strtolower(Header::AUTHORIZATION);
             $allowed[] = strtolower(Header::COOKIE);
         }
@@ -446,9 +488,15 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         return false;
     }
 
+    private function hasCredentials(ServerRequestInterface $request): bool
+    {
+        return $request->getHeaderLine(Header::AUTHORIZATION) !== ''
+            || $request->getHeaderLine(Header::COOKIE) !== '';
+    }
+
     private function isUnsafeMethod(string $method): bool
     {
-        return !in_array(strtoupper($method), ['GET', 'HEAD', 'OPTIONS', 'TRACE'], true);
+        return !HttpMethod::isSafe($method);
     }
 
     private function withDebugHeader(ResponseInterface $response, string $status): ResponseInterface
