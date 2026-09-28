@@ -47,7 +47,15 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
     public function store(string $key, ResponseInterface $response, int $ttl): bool
     {
-        if ($ttl <= 0 || $response->hasHeader(Header::SET_COOKIE) || $response->hasHeader(Header::CONTENT_RANGE)) {
+        $status = $response->getStatusCode();
+
+        if (
+            $ttl <= 0
+            || $status < 200
+            || in_array($status, [206, 304], true)
+            || $response->hasHeader(Header::SET_COOKIE)
+            || $response->hasHeader(Header::CONTENT_RANGE)
+        ) {
             return false;
         }
 
