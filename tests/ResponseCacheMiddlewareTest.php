@@ -235,6 +235,23 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('missing', (string) $response->getBody());
     }
 
+    public function testGeneratedEtagPreservesOriginalBodyPosition(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->method('store')->willReturn(false);
+        $origin = new Response(200, [], 'abcdef');
+        $origin->getBody()->seek(2);
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler($origin),
+        );
+
+        self::assertNotSame('', $response->getHeaderLine('ETag'));
+        self::assertSame(2, $response->getBody()->tell());
+    }
+
     public function testGeneratedEtagIncludesRepresentationMetadata(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
