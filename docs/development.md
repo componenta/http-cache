@@ -10,7 +10,7 @@ CI installs published Config 4, Reflection 3, HTTP 1, HTTP Responder 2, MIME Typ
 |---|---|---|---|
 | `componenta/di` | `main` | `6.0.x-dev` | [`e203077d1204`](https://github.com/componenta/di/commit/e203077d12048936f078d37d1cf3badd661e1716) |
 | `componenta/router` | `fix/http-cache-dependency-integration-2026-11-26` | `3.1.x-dev` | [`afe53a6b2d58`](https://github.com/componenta/router/commit/afe53a6b2d58cc235ef177eef6318e93d876350b) |
-| `componenta/middleware-factory` | `refactor/middleware-factory-audit` | `3.0.x-dev` | [`1f8d364be116`](https://github.com/componenta/middleware-factory/commit/1f8d364be1161fe5f6162c6f00a72e7f64c36fd8) |
+| `componenta/middleware-factory` | `refactor/middleware-factory-audit` | `3.0.x-dev` | [`bba06a2a297a`](https://github.com/componenta/middleware-factory/commit/bba06a2a297a365d164f73fc5112eaeadbdaf746) |
 
 The Router integration branch adds support for Responder 2 and Middleware Factory 3 without changing its routing API. Its compatibility range is additive; HTTP Cache CI selects the new major lines, not the earlier interim compatibility branches. Publication requires compatible stable Router, Middleware Factory and DI releases. Pipeline 1.1.1 is already released.
 
@@ -27,7 +27,7 @@ git -C .development-dependencies/di switch -C main e203077d12048936f078d37d1cf3b
 git clone --branch fix/http-cache-dependency-integration-2026-11-26 https://github.com/componenta/router.git .development-dependencies/router
 git -C .development-dependencies/router switch -C fix/http-cache-dependency-integration-2026-11-26 afe53a6b2d58cc235ef177eef6318e93d876350b
 git clone --branch refactor/middleware-factory-audit https://github.com/componenta/middleware-factory.git .development-dependencies/middleware-factory
-git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit 1f8d364be1161fe5f6162c6f00a72e7f64c36fd8
+git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit bba06a2a297a365d164f73fc5112eaeadbdaf746
 php .github/scripts/prepare-development.php
 composer validate --strict
 COMPOSER=.composer-development.json composer update --no-interaction --prefer-dist
