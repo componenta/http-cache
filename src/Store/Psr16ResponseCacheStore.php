@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Store;
 
+use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Protocol\ResponseAge;
 use Componenta\Http\Header;
@@ -67,7 +68,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
-        $contents = $this->readBody($response, $this->maxEntryBytes - $headerBytes);
+        $contents = BodySnapshot::read($response->getBody(), $this->maxEntryBytes - $headerBytes);
 
         if ($contents === null) {
             return false;
@@ -93,46 +94,6 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
     public function delete(string $key): void
     {
         $this->cache->delete($key);
-    }
-
-    private function readBody(ResponseInterface $response, int $maxBytes): ?string
-    {
-        $body = $response->getBody();
-
-        if (!$body->isSeekable() || !$body->isReadable()) {
-            return null;
-        }
-
-        $size = $body->getSize();
-
-        if ($size !== null && $size > $maxBytes) {
-            return null;
-        }
-
-        $position = $body->tell();
-        $contents = '';
-
-        try {
-            $body->rewind();
-
-            while (!$body->eof()) {
-                $chunk = $body->read(8192);
-
-                if ($chunk === '') {
-                    break;
-                }
-
-                if (strlen($contents) + strlen($chunk) > $maxBytes) {
-                    return null;
-                }
-
-                $contents .= $chunk;
-            }
-
-            return $contents;
-        } finally {
-            $body->seek($position);
-        }
     }
 
     /**

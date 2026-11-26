@@ -36,6 +36,23 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame('abcdef', $cached->body);
     }
 
+    public function testRejectsEmptyReadBeforeEofAndRestoresPosition(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->method('isReadable')->willReturn(true);
+        $body->method('isSeekable')->willReturn(true);
+        $body->method('getSize')->willReturn(null);
+        $body->method('tell')->willReturn(2);
+        $body->method('eof')->willReturn(false);
+        $body->method('read')->willReturnOnConsecutiveCalls('partial', '');
+        $body->expects(self::once())->method('seek')->with(2);
+
+        self::assertFalse($store->store('key', (new Response(200))->withBody($body), 60));
+        self::assertSame([], $cache->values);
+    }
+
     public function testRejectsUnsupportedProtocolStatuses(): void
     {
         $cache = new ArrayCache();

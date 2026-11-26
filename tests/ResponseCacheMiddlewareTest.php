@@ -449,6 +449,28 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testEtagReadFailureReturnsOriginResponseWithoutCacheWrite(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->method('isReadable')->willReturn(true);
+        $body->method('isSeekable')->willReturn(true);
+        $body->method('getSize')->willReturn(4);
+        $body->method('tell')->willReturn(2);
+        $body->method('eof')->willReturn(false);
+        $body->method('read')->willThrowException(new RuntimeException('read failed'));
+        $body->expects(self::once())->method('seek')->with(2);
+        $response = (new Response(200))->withBody($body);
+
+        $result = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/stream'), $this->handler($response));
+
+        self::assertSame(200, $result->getStatusCode());
+        self::assertSame($body, $result->getBody());
+        self::assertFalse($result->hasHeader('ETag'));
+    }
+
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

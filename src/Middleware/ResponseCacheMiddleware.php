@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Middleware;
 
+use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
 use Componenta\Http\Cache\Key\RequestTarget;
@@ -109,17 +110,27 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $response = $response->withHeader(Header::DATE, HttpDate::format((int) $responseTime));
         }
 
-        $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
-        $ttl = $this->responseTtl($response, $policy, $initialAge, $responseTime);
-
-        if ($ttl === null) {
-            return $this->withDebugHeader($response, 'BYPASS');
-        }
-
-        $response = $this->prepareResponse($request, $response, $policy);
-        $storedResponse = $response->withHeader(Header::AGE, (string) $initialAge);
-
         try {
+            $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
+            $ttl = $this->responseTtl($response, $policy, $initialAge, $responseTime);
+
+            if ($ttl === null) {
+                return $this->withDebugHeader($response, 'BYPASS');
+            }
+
+            $response = $this->prepareResponse($request, $response, $policy);
+            $storedResponse = $response;
+
+            if ($policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG)) {
+                $contents = BodySnapshot::read($response->getBody(), $this->maxEntryBytes);
+                if ($contents === null) {
+                    return $this->withDebugHeader($response, 'BYPASS');
+                }
+                $response = $response->withHeader(Header::ETAG, $this->weakEtag($response, $contents));
+                $storedResponse = $response->withBody($this->streamFactory->createStream($contents));
+            }
+
+            $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $initialAge);
             $stored = $this->store->store($key, $storedResponse, $ttl);
         } catch (Throwable $exception) {
             $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
@@ -378,18 +389,6 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $response = $response->withHeader(Header::VARY, implode(', ', $vary));
         }
 
-        if (
-            $policy->generateEtag
-            && $request->getMethod() === HttpMethod::GET
-            && !$response->hasHeader(Header::ETAG)
-        ) {
-            $etag = $this->weakEtag($response);
-
-            if ($etag !== null) {
-                $response = $response->withHeader(Header::ETAG, $etag);
-            }
-        }
-
         return $response;
     }
 
@@ -410,14 +409,8 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         return $response->withHeader(Header::CACHE_CONTROL, implode(', ', $parts));
     }
 
-    private function weakEtag(ResponseInterface $response): ?string
+    private function weakEtag(ResponseInterface $response, string $contents): string
     {
-        $body = $response->getBody();
-
-        if (!$body->isSeekable() || !$body->isReadable()) {
-            return null;
-        }
-
         $context = hash_init('sha256');
 
         foreach ([
@@ -428,38 +421,14 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             Header::CONTENT_DIGEST,
         ] as $header) {
             hash_update($context, strtolower($header) . "\0");
-
             foreach ($response->getHeader($header) as $value) {
                 hash_update($context, $value . "\0");
             }
         }
 
-        $position = $body->tell();
-        $bytes = 0;
+        hash_update($context, $contents);
 
-        try {
-            $body->rewind();
-
-            while (!$body->eof()) {
-                $chunk = $body->read(8192);
-
-                if ($chunk === '') {
-                    break;
-                }
-
-                $bytes += strlen($chunk);
-
-                if ($bytes > $this->maxEntryBytes) {
-                    return null;
-                }
-
-                hash_update($context, $chunk);
-            }
-
-            return 'W/"' . hash_final($context) . '"';
-        } finally {
-            $body->seek($position);
-        }
+        return 'W/"' . hash_final($context) . '"';
     }
 
     private function isNotModified(
