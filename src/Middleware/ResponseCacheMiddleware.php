@@ -339,6 +339,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         if (($request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($cached->status)) && $cached->body !== '') {
             return false;
         }
+        if (isset($headers['transfer-encoding'])
+            || !ResponseEligibility::validContentFraming($cached->status, $headers['content-length'] ?? [])) {
+            return false;
+        }
         if ($request->getMethod() === HttpMethod::GET
             && !ResponseEligibility::matchesContentLength($headers['content-length'] ?? [], strlen($cached->body))) {
             return false;

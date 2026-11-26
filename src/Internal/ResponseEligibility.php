@@ -169,6 +169,14 @@ final class ResponseEligibility
             }
         }
 
+        if (!self::validContentFraming(
+            $response->getStatusCode(),
+            $response->getHeader(Header::CONTENT_LENGTH),
+            $response->hasHeader(Header::TRANSFER_ENCODING),
+        )) {
+            return false;
+        }
+
         // Connection-specific fields may be discarded, but never discard metadata
         // needed to determine cache safety or the identity of a representation.
         foreach (HeaderList::split($response->getHeader(Header::CONNECTION)) as $field) {
@@ -184,19 +192,48 @@ final class ResponseEligibility
         return true;
     }
 
+    /** @param array<string> $lengths */
+    public static function validContentFraming(int $status, array $lengths, bool $transferEncoded = false): bool
+    {
+        $length = self::contentLength($lengths);
+        if ($length === false || ($length !== null && $transferEncoded)) {
+            return false;
+        }
+
+        // RFC 9110 §8.6 and RFC 9112 §6.1 prohibit both fields for 204.
+        // HEAD may otherwise advertise the length of the selected representation.
+        if ($status === 204) {
+            return $length === null && !$transferEncoded;
+        }
+
+        return $status !== 205 || $length === null || $length === '0';
+    }
+
     /** @param array<string> $values */
     public static function matchesContentLength(array $values, int $length): bool
     {
-        $values = array_values($values);
+        $declared = self::contentLength($values);
+
+        return $declared === null || $declared === (string) $length;
+    }
+
+    /** @param array<string> $values */
+    private static function contentLength(array $values): string|false|null
+    {
         if ($values === []) {
-            return true;
+            return null;
         }
-        if (count($values) !== 1 || preg_match('/^[0-9]+$/D', trim($values[0])) !== 1) {
+        $values = array_values($values);
+        if (count($values) !== 1) {
             return false;
         }
-        $normalized = ltrim(trim($values[0]), '0');
+        $value = trim($values[0], " \t");
+        if (preg_match('/^[0-9]+$/D', $value) !== 1) {
+            return false;
+        }
+        $normalized = ltrim($value, '0');
 
-        return ($normalized === '' ? '0' : $normalized) === (string) $length;
+        return $normalized === '' ? '0' : $normalized;
     }
 
     private function __construct() {}

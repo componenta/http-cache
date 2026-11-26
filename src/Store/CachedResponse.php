@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Store;
 
 use Componenta\Http\Cache\Internal\CacheableStatus;
+use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -139,6 +140,10 @@ final readonly class CachedResponse
             }
             /** @var list<string> $values */
             $normalized[$lowerName] = $values;
+        }
+
+        if (!ResponseEligibility::validContentFraming($status, $normalized['content-length'] ?? [])) {
+            return null;
         }
 
         $cacheControl = CacheControl::fromValues($normalized['cache-control'] ?? []);
