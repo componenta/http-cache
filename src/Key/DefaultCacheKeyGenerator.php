@@ -10,6 +10,7 @@ use Componenta\Http\Header;
 use Componenta\Http\Router\Middleware\MatchRouteMiddleware;
 use InvalidArgumentException;
 use Psr\Http\Message\ServerRequestInterface;
+use RuntimeException;
 
 final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterface
 {
@@ -31,7 +32,7 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
             'route' => $match === null ? '_unknown' : $match->name,
             'policy' => $this->policyFingerprint($policy),
             'vary' => $this->varyHeaders($request, $policy),
-            'tags' => $this->tags->versions($tags),
+            'tags' => $this->tagGenerations($tags),
         ];
 
         if ($policy->private) {
@@ -39,6 +40,25 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
         }
 
         return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+    }
+
+    /**
+     * @param list<string> $tags
+     * @return array<array-key, int>
+     */
+    private function tagGenerations(array $tags): array
+    {
+        $versions = $this->tags->versions($tags);
+        $ordered = [];
+        foreach ($tags as $tag) {
+            if (!array_key_exists($tag, $versions)) {
+                throw new RuntimeException('HTTP cache tag generation is missing.');
+            }
+            $ordered[$tag] = $versions[$tag];
+        }
+        ksort($ordered, SORT_STRING);
+
+        return $ordered;
     }
 
     /**

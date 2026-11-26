@@ -92,6 +92,38 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         $generator->generate($request, new HttpCachePolicy(ttl: 60));
     }
 
+    public function testIncompleteTagSnapshotCannotProduceCacheKey(): void
+    {
+        $tags = $this->createStub(TagVersionStoreInterface::class);
+        $tags->method('versions')->willReturn(['catalog' => 1]);
+        $generator = new DefaultCacheKeyGenerator($tags);
+
+        $this->expectException(\RuntimeException::class);
+        $generator->generate(
+            new ServerRequest('GET', 'https://example.test/items'),
+            new HttpCachePolicy(ttl: 60, tags: ['catalog']),
+        );
+    }
+
+    public function testTagSnapshotOrderingDoesNotChangeKey(): void
+    {
+        $first = $this->createStub(TagVersionStoreInterface::class);
+        $first->method('versions')->willReturnCallback(
+            static fn (array $tags): array => array_fill_keys($tags, 1),
+        );
+        $second = $this->createStub(TagVersionStoreInterface::class);
+        $second->method('versions')->willReturnCallback(
+            static fn (array $tags): array => array_reverse(array_fill_keys($tags, 1), true),
+        );
+        $request = new ServerRequest('GET', 'https://example.test/items');
+        $policy = new HttpCachePolicy(ttl: 60, tags: ['catalog', '42']);
+
+        self::assertSame(
+            (new DefaultCacheKeyGenerator($first))->generate($request, $policy),
+            (new DefaultCacheKeyGenerator($second))->generate($request, $policy),
+        );
+    }
+
     public function testGeneratedKeyIsPortablePsr16Key(): void
     {
         $generator = new DefaultCacheKeyGenerator($this->tags(), 'tenant:with:reserved:characters');
