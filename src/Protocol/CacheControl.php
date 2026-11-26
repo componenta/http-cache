@@ -15,28 +15,48 @@ final readonly class CacheControl
     public static function fromValues(array $values): self
     {
         $directives = [];
+        $valid = true;
 
         foreach (HeaderList::split($values) as $part) {
             $segments = explode('=', $part, 2);
             $name = strtolower(trim($segments[0]));
 
-            if ($name === '') {
+            if (!self::isToken($name)) {
+                $valid = false;
                 continue;
             }
 
-            $argument = $segments[1] ?? null;
-            $directives[$name][] = $argument === null ? null : trim($argument);
+            $argument = isset($segments[1]) ? trim($segments[1]) : null;
+            if ($argument !== null && !self::isToken($argument) && !self::isQuotedString($argument)) {
+                $valid = false;
+            }
+            $directives[$name][] = $argument;
         }
 
-        return new self($directives);
+        return new self($directives, $valid);
     }
 
     /**
      * @param array<string, list<?string>> $directives
      */
-    private function __construct(array $directives)
+    private function __construct(array $directives, private bool $valid)
     {
         $this->directives = $directives;
+    }
+
+    public function isValid(): bool
+    {
+        return $this->valid;
+    }
+
+    private static function isToken(string $value): bool
+    {
+        return preg_match("@^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$@D", $value) === 1;
+    }
+
+    private static function isQuotedString(string $value): bool
+    {
+        return preg_match('/\A"(?:[\x09\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\\\[\x09\x20-\x7E\x80-\xFF])*"\z/D', $value) === 1;
     }
 
     public function has(string $name): bool

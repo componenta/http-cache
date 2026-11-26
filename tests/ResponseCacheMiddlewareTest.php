@@ -679,6 +679,35 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('new', (string) $response->getBody());
     }
 
+    public function testMalformedResponseCacheControlIsNeverStored(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [
+            'Cache-Control' => 'public, extension="unclosed, no-store',
+        ], 'origin'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testMalformedRequestCacheControlCannotAccessStore(): void
+    {
+        $policies = $this->policyProvider(new HttpCachePolicy(ttl: 60));
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [], 'origin'));
+        $request = (new ServerRequest('GET', 'https://example.test/items'))
+            ->withHeader('Cache-Control', 'extension="unclosed, no-store');
+
+        self::assertSame('origin', (string) $this->middleware($policies, $keys, $store, $this->createStub(CacheInvalidatorInterface::class))->process($request, $handler)->getBody());
+    }
+
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

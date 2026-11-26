@@ -239,7 +239,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        if ($cacheControl->has('no-store')) {
+        if (!$cacheControl->isValid() || $cacheControl->has('no-store')) {
             return false;
         }
 
@@ -280,7 +280,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         $headers = array_change_key_case($cached->headers, CASE_LOWER);
         $responseControl = CacheControl::fromValues($headers['cache-control'] ?? []);
-        if ($responseControl->has('no-store') || $responseControl->has('no-cache')
+        if (!$responseControl->isValid() || $responseControl->has('no-store') || $responseControl->has('no-cache')
             || $responseControl->has('must-understand') || (!$policy->private && $responseControl->has('private'))
             || isset($headers['set-cookie']) || isset($headers['content-range'])
             || isset($headers['x-accel-redirect']) || isset($headers['x-sendfile'])

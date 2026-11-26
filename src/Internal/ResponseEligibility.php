@@ -37,7 +37,7 @@ final class ResponseEligibility
 
         $cacheControl = CacheControl::fromValues($response->getHeader(Header::CACHE_CONTROL));
 
-        if ($cacheControl->has('no-store') || $cacheControl->has('no-cache') || $cacheControl->has('must-understand')) {
+        if (!$cacheControl->isValid() || $cacheControl->has('no-store') || $cacheControl->has('no-cache') || $cacheControl->has('must-understand')) {
             return null;
         }
 

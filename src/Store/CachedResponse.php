@@ -137,7 +137,7 @@ final readonly class CachedResponse
         }
 
         $cacheControl = CacheControl::fromValues($normalized['cache-control'] ?? []);
-        if ($cacheControl->has('no-store') || $cacheControl->has('no-cache')
+        if (!$cacheControl->isValid() || $cacheControl->has('no-store') || $cacheControl->has('no-cache')
             || $cacheControl->has('must-understand')
             || in_array('*', HeaderList::split($normalized['vary'] ?? []), true)) {
             return null;

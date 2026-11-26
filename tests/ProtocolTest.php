@@ -22,6 +22,15 @@ final class ProtocolTest extends TestCase
         );
     }
 
+    public function testCacheControlRecognizesValidQuotedExtensionsAndMalformedSyntax(): void
+    {
+        self::assertTrue(CacheControl::fromValues(['max-age=60, extension="a,b"'])->isValid());
+        self::assertTrue(CacheControl::fromValues(['extension="a\\"b"'])->isValid());
+        self::assertFalse(CacheControl::fromValues(['extension="unclosed, no-store'])->isValid());
+        self::assertFalse(CacheControl::fromValues(['max-age='])->isValid());
+        self::assertFalse(CacheControl::fromValues(['invalid name=1'])->isValid());
+    }
+
     public function testCacheControlRejectsConflictingNumericDirective(): void
     {
         $cacheControl = CacheControl::fromValues(['max-age=60, max-age=120']);

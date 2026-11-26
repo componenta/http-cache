@@ -177,6 +177,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
             ['headers' => ['Content-Range' => ['bytes 0-1/4']]],
             ['headers' => ['Cache-Control' => ['no-store']]],
             ['headers' => ['Cache-Control' => ['no-cache']]],
+            ['headers' => ['Cache-Control' => ['extension="unclosed, no-store']]],
             ['headers' => ['Vary' => ['*']]],
             ['headers' => ['Connection' => ['X-Secret']]],
             ['headers' => ['X-Test' => ['one'], 'x-test' => ['two']]],
