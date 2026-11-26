@@ -214,6 +214,43 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame(['kept'], $cached->headers['X-End-To-End']);
     }
 
+    public function testRequiredStatusFieldsCannotBeLostWhenStored(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+        $freshness = CacheFreshness::fromTtl(1000, 60);
+
+        self::assertFalse($store->store('missing-allow', new Response(405), $freshness));
+        self::assertFalse($store->store('removed-allow', new Response(405, ['Allow' => 'POST', 'Connection' => 'Allow']), $freshness));
+        self::assertFalse($store->store('missing-challenge', new Response(401), $freshness));
+        self::assertSame([], $cache->values);
+
+        // An empty Allow field is legal: the resource may have no allowed methods.
+        self::assertTrue($store->store('disabled-resource', new Response(405, ['Allow' => '']), $freshness));
+        self::assertSame([''], $store->fetch('disabled-resource')?->headers['Allow']);
+        self::assertTrue($store->store('challenge', new Response(401, ['WWW-Authenticate' => 'Bearer realm="api"']), $freshness));
+        self::assertSame(['Bearer realm="api"'], $store->fetch('challenge')?->headers['WWW-Authenticate']);
+    }
+
+    public function testFetchRejectsStatusWithMissingMandatoryFields(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+
+        foreach ([401, 405] as $status) {
+            $cache->values['key'] = [
+                'status' => $status,
+                'headers' => ['Cache-Control' => ['public, max-age=60']],
+                'body' => '',
+                'storedAt' => 1000,
+                'freshUntil' => 1060,
+            ];
+            self::assertNull($store->fetch('key'));
+        }
+    }
+
     public function testCannotStripConnectionNominatedRedirectOrChallenge(): void
     {
         $cache = new InMemoryCache();

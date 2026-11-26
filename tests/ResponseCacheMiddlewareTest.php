@@ -321,6 +321,45 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(500, $response->getStatusCode());
     }
 
+    public function testCustomStoreCannotReplayMethodNotAllowedWithoutAllow(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [405]);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 405,
+            headers: ['Cache-Control' => ['public, max-age=60']],
+            body: '',
+            storedAt: 990,
+            freshUntil: 1050,
+        ));
+        $response = $this->middleware(
+            $this->policyProvider($policy),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            clock: $clock,
+        )->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(405, ['Allow' => 'POST'])),
+        );
+        self::assertSame('POST', $response->getHeaderLine('Allow'));
+    }
+
+    public function testMissingMandatoryStatusFieldPreventsMiddlewareStorage(): void
+    {
+        foreach ([401, 405] as $status) {
+            [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60, statuses: [$status]));
+            $store->expects(self::never())->method('store');
+            $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+                new ServerRequest('GET', 'https://example.test/resource'),
+                $this->handler(new Response($status, ['Cache-Control' => 'public, max-age=60'])),
+            );
+
+            self::assertSame($status, $response->getStatusCode());
+        }
+    }
+
     public function testNonHeuristicCachedResponseWithoutStoragePermissionIsNotReplayed(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
