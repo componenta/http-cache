@@ -465,6 +465,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
 
     public function testIfNoneMatchUsesWeakComparisonAndBuildsRfc304Metadata(): void
     {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
         $policy = new HttpCachePolicy(ttl: 60);
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
@@ -474,13 +475,13 @@ final class ResponseCacheMiddlewareTest extends TestCase
             headers: [
                 'ETag' => ['W/"abc"'],
                 'Cache-Control' => ['public, max-age=60'],
-                'Date' => ['Sun, 27 Sep 2026 20:00:00 GMT'],
-                'Expires' => ['Sun, 27 Sep 2026 20:01:00 GMT'],
+                'Date' => [HttpDate::format(1000)],
+                'Expires' => [HttpDate::format(1060)],
                 'Content-Location' => ['/articles/1'],
             ],
             body: 'hello',
-            storedAt: time(),
-            freshUntil: time() + 60,
+            storedAt: 1000,
+            freshUntil: 1060,
         ));
         $invalidator = $this->createStub(CacheInvalidatorInterface::class);
         $handler = $this->createMock(RequestHandlerInterface::class);
@@ -488,7 +489,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $request = (new ServerRequest('GET', 'https://example.test/articles/1'))
             ->withHeader('If-None-Match', '"abc"');
 
-        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)->process($request, $handler);
 
         self::assertSame(304, $response->getStatusCode());
         self::assertSame('W/"abc"', $response->getHeaderLine('ETag'));
@@ -974,6 +975,41 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
 
         self::assertSame('origin', (string) $response->getBody());
+    }
+
+    #[DataProvider('inconsistentAgeHeaders')]
+    /** @param array<string, list<string>> $headers */
+    public function testCustomStoreCannotUnderstateAgeToReplayStaleResponse(array $headers): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public, max-age=60']] + $headers,
+            body: 'stale',
+            storedAt: 990,
+            ageAtStore: 0,
+            freshUntil: 1050,
+        ));
+        $response = $this->middleware(
+            $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            clock: $clock,
+        )->process(
+            new ServerRequest('GET', 'https://example.test/items'),
+            $this->handler(new Response(200, ['Cache-Control' => 'no-store'], 'origin')),
+        );
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    /** @return iterable<string, array{array<string, list<string>>}> */
+    public static function inconsistentAgeHeaders(): iterable
+    {
+        yield 'upstream age' => [['Age' => ['120']]];
+        yield 'apparent age' => [['Date' => ['Thu, 01 Jan 1970 00:14:30 GMT']]];
     }
 
     public function testHitCannotExtendOriginMaxAgeEvenIfStoreDeadlineIsLater(): void

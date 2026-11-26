@@ -316,6 +316,39 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testStoreRejectsFreshnessMetadataThatUnderstatesUpstreamAge(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+
+        self::assertFalse($store->store('age', new Response(200, ['Age' => '120'], 'body'), CacheFreshness::fromTtl(1000, 60)));
+        self::assertFalse($store->store('date', new Response(200, ['Date' => 'Thu, 01 Jan 1970 00:14:40 GMT'], 'body'), CacheFreshness::fromTtl(1000, 60)));
+        self::assertSame([], $cache->values);
+    }
+
+    public function testFetchRejectsAnEntryWithContradictoryAgeMetadata(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+        $base = [
+            'status' => 200,
+            'body' => 'body',
+            'storedAt' => 990,
+            'ageAtStore' => 0,
+            'freshUntil' => 1050,
+        ];
+
+        foreach ([
+            ['Age' => ['120']],
+            ['Date' => ['Thu, 01 Jan 1970 00:14:30 GMT']],
+        ] as $headers) {
+            $cache->values['key'] = $base + ['headers' => $headers];
+            self::assertNull($store->fetch('key'));
+        }
+    }
+
     public function testPreservesUpstreamAgeWhenServingCachedResponse(): void
     {
         $cache = new InMemoryCache();
