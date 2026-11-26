@@ -214,6 +214,23 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame(['kept'], $cached->headers['X-End-To-End']);
     }
 
+    public function testCannotStripConnectionNominatedRedirectOrChallenge(): void
+    {
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $freshness = CacheFreshness::fromTtl(time(), 60);
+
+        self::assertFalse($store->store('redirect', new Response(302, [
+            'Connection' => 'Location',
+            'Location' => '/target',
+        ]), $freshness));
+        self::assertFalse($store->store('challenge', new Response(401, [
+            'Connection' => 'WWW-Authenticate',
+            'WWW-Authenticate' => 'Bearer realm="api"',
+        ]), $freshness));
+        self::assertSame([], $cache->values);
+    }
+
     public function testCannotStripConnectionNominatedCacheMetadata(): void
     {
         $cache = new InMemoryCache();

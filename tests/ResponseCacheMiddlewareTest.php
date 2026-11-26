@@ -321,6 +321,75 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(500, $response->getStatusCode());
     }
 
+    public function testNonHeuristicCachedResponseWithoutStoragePermissionIsNotReplayed(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [302]);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 302,
+            headers: ['Cache-Control' => ['no-transform'], 'Location' => ['/old']],
+            body: '',
+            storedAt: 990,
+            freshUntil: 1050,
+        ));
+        $result = $this->middleware(
+            $this->policyProvider($policy),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            clock: $clock,
+        )->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(302, ['Location' => '/current', 'Cache-Control' => 'no-store'])),
+        );
+        self::assertSame('/current', $result->getHeaderLine('Location'));
+    }
+
+    public function testExplicitlyCacheableRedirectRemainsReusable(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [302]);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 302,
+            headers: ['Cache-Control' => ['public, max-age=60'], 'Location' => ['/target']],
+            body: '',
+            storedAt: 990,
+            freshUntil: 1050,
+        ));
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+        $result = $this->middleware(
+            $this->policyProvider($policy),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            clock: $clock,
+        )->process(new ServerRequest('GET', 'https://example.test/resource'), $handler);
+
+        self::assertSame(302, $result->getStatusCode());
+        self::assertSame('/target', $result->getHeaderLine('Location'));
+    }
+
+    public function testConnectionNominatedLocationCannotBeCached(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [302]);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(302, [
+                'Connection' => 'Location',
+                'Location' => '/target',
+                'Cache-Control' => 'public, max-age=60',
+            ])),
+        );
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/target', $response->getHeaderLine('Location'));
+    }
+
     public function testPolicyCanMakeOtherwiseNonHeuristicStatusExplicitlyCacheable(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, statuses: [500]);
