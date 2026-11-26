@@ -142,7 +142,9 @@ final readonly class CachedResponse
             $normalized[$lowerName] = $values;
         }
 
-        if (!ResponseEligibility::validContentFraming($status, $normalized['content-length'] ?? [])) {
+        $lengths = $normalized['content-length'] ?? [];
+        if (!ResponseEligibility::validContentFraming($status, $lengths)
+            || ($body !== '' && !ResponseEligibility::matchesContentLength($lengths, strlen($body)))) {
             return null;
         }
 
