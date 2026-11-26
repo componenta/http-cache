@@ -570,6 +570,22 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testBackendWriteCannotReportSuccessAfterDeadline(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = $this->createMock(\Psr\SimpleCache\CacheInterface::class);
+        $backend->expects(self::once())->method('set')->with('key', self::isType('array'), 1)->willReturnCallback(
+            static function () use ($clock): bool {
+                $clock->advance(1);
+                return true;
+            },
+        );
+        $backend->expects(self::never())->method('delete');
+        $store = new Psr16ResponseCacheStore($backend, clock: $clock);
+
+        self::assertFalse($store->store('key', new Response(200, [], 'body'), CacheFreshness::fromTtl(1000, 1)));
+    }
+
     public function testSnapshotTimeDoesNotExtendFreshnessDeadline(): void
     {
         $cache = new InMemoryCache();

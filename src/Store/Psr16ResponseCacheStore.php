@@ -110,7 +110,16 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
-        return $this->cache->set($key, $payload, $remaining);
+        if (!$this->cache->set($key, $payload, $remaining)) {
+            return false;
+        }
+
+        // A blocking backend can finish after the absolute deadline. The
+        // persisted deadline still prevents replay; do not delete by key here
+        // because another writer may already have replaced this entry.
+        $completedAt = $this->clock->now()->getTimestamp();
+
+        return $completedAt >= $storedAt && $freshness->remainingAt($completedAt) > 0;
     }
 
     public function delete(string $key): void

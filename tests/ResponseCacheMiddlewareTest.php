@@ -1369,6 +1369,24 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('Cache-Control'));
     }
 
+    public function testCustomStoreCompletionAfterDeadlineDoesNotPublishFreshness(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 1));
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function () use ($clock): bool {
+                $clock->advance(1);
+                return true;
+            },
+        );
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
     public function testSuccessfulMissIncludesTimeSpentInStorageInAge(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));

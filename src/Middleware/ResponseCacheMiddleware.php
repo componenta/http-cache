@@ -201,13 +201,20 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $storedResponse = $snapshot === null ? $prepared : $prepared->withBody($snapshot);
             $stored = $this->store->store($key, $storedResponse, $freshness);
             if ($stored) {
-                $response = $prepared;
-                // Account for time spent waiting for the storage adapter too.
-                // Keep the prepared response if this final clock read fails.
-                $response = $response->withHeader(
-                    Header::AGE,
-                    (string) $freshness->ageAt(max($now, $this->clock->now()->getTimestamp())),
-                );
+                // Independently enforce the absolute deadline, including custom
+                // stores. If the final clock read fails, preserve the last known
+                // successful age calculation and the completed origin response.
+                try {
+                    $completedAt = $this->clock->now()->getTimestamp();
+                } catch (Throwable $exception) {
+                    $this->reportFailure('HTTP cache completion timing failed.', $exception);
+                    $completedAt = $now;
+                }
+                if ($completedAt < $now || $freshness->remainingAt($completedAt) <= 0) {
+                    $stored = false;
+                } else {
+                    $response = $prepared->withHeader(Header::AGE, (string) $freshness->ageAt($completedAt));
+                }
             }
         } catch (Throwable $exception) {
             $this->reportFailure('HTTP cache write failed.', $exception);
