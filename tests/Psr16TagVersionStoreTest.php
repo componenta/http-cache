@@ -68,6 +68,42 @@ final class Psr16TagVersionStoreTest extends TestCase
         self::assertNotSame($first['product:42'], $second['product:42']);
     }
 
+    public function testTagAliasesUseTheSameGenerationAsNormalizedPolicies(): void
+    {
+        $store = new Psr16TagVersionStore(new InMemoryCache());
+        $initial = $store->versions(['catalog', ' catalog ']);
+        self::assertSame($initial['catalog'], $initial[' catalog ']);
+
+        $store->invalidateTags([' catalog ', 'catalog']);
+        $next = $store->versions(['catalog', ' catalog ']);
+        self::assertNotSame($initial['catalog'], $next['catalog']);
+        self::assertSame($next['catalog'], $next[' catalog ']);
+    }
+
+    public function testInvalidTagIsRejectedBeforeAnyMutation(): void
+    {
+        $store = new Psr16TagVersionStore(new InMemoryCache());
+        $initial = $store->versions(['catalog']);
+
+        try {
+            $store->invalidateTags(['catalog', ' ']);
+            self::fail('Expected invalid tag rejection.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($initial, $store->versions(['catalog']));
+        }
+    }
+
+    public function testInvalidationAttemptsOtherTagsAfterOneBackendFailure(): void
+    {
+        $cache = $this->createMock(CacheInterface::class);
+        $cache->method('get')->willReturn(1);
+        $cache->expects(self::exactly(2))->method('set')->willReturnOnConsecutiveCalls(false, true);
+        $store = new Psr16TagVersionStore($cache);
+
+        $this->expectException(RuntimeException::class);
+        $store->invalidateTags(['first', ' first ', 'second']);
+    }
+
     public function testInvalidationFailureIsNotSilentlyIgnored(): void
     {
         $cache = new TagSpyCache();

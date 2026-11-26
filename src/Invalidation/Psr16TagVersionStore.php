@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Invalidation;
 
+use InvalidArgumentException;
 use Override;
 use Psr\SimpleCache\CacheInterface;
 use RuntimeException;
+use Throwable;
 
 use function random_int;
 
@@ -21,10 +23,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
     public function versions(array $tags): array
     {
         $versions = [];
-        $keys = [];
-        foreach (array_unique($tags) as $tag) {
-            $keys[$this->key($tag)] = $tag;
-        }
+        $keys = $this->keysByTag($tags);
 
         if ($keys === []) {
             return [];
@@ -37,11 +36,14 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
             }
         }
 
-        foreach ($keys as $key => $tag) {
-            $versions[$tag] = $this->resolveVersion($key, $values[$key] ?? null);
+        foreach ($keys as $key => $aliases) {
+            $version = $this->resolveVersion($key, $values[$key] ?? null);
+            foreach ($aliases as $tag) {
+                $versions[$tag] = $version;
+            }
         }
 
-        ksort($versions);
+        ksort($versions, SORT_STRING);
 
         return $versions;
     }
@@ -49,18 +51,44 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
     #[Override]
     public function invalidateTags(array $tags): void
     {
-        foreach ($tags as $tag) {
-            if (!$this->cache->set($this->key($tag), $this->nextVersion($tag))) {
-                throw new RuntimeException('Unable to invalidate HTTP cache tag.');
+        // Validate the complete input before changing any generations. A failure
+        // for one key must not prevent best-effort invalidation of the others.
+        $keys = $this->keysByTag($tags);
+        $failure = null;
+        foreach (array_keys($keys) as $key) {
+            try {
+                if (!$this->cache->set($key, $this->nextVersion($key))) {
+                    throw new RuntimeException('Unable to invalidate HTTP cache tag.');
+                }
+            } catch (Throwable $exception) {
+                $failure ??= $exception;
             }
+        }
+        if ($failure !== null) {
+            throw $failure;
         }
     }
 
-    private function version(string $tag): int
+    /**
+     * @param array<array-key, mixed> $tags
+     * @return array<string, list<string>>
+     */
+    private function keysByTag(array $tags): array
     {
-        $key = $this->key($tag);
+        if (!array_is_list($tags)) {
+            throw new InvalidArgumentException('HTTP cache tags must be a list.');
+        }
 
-        return $this->resolveVersion($key, $this->cache->get($key));
+        $keys = [];
+        foreach ($tags as $tag) {
+            if (!is_string($tag) || trim($tag) === '') {
+                throw new InvalidArgumentException('HTTP cache tags must be non-empty strings.');
+            }
+
+            $keys[$this->key(trim($tag))][] = $tag;
+        }
+
+        return $keys;
     }
 
     private function resolveVersion(string $key, mixed $version): int
@@ -83,9 +111,9 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
         return hash('sha256', $this->prefix . "\0" . $tag);
     }
 
-    private function nextVersion(string $tag): int
+    private function nextVersion(string $key): int
     {
-        $current = $this->version($tag);
+        $current = $this->cache->get($key);
 
         do {
             $version = $this->generateVersion();
