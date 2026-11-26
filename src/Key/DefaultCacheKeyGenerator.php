@@ -30,7 +30,7 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
             'target' => RequestTarget::identity($request),
             'queryParams' => self::validateParameters($request->getQueryParams()),
             'route' => $match?->name,
-            'routeParameters' => self::validateParameters($match?->parameters ?? []),
+            'routeParameters' => self::validateParameters($match->parameters ?? []),
             'policy' => $this->policyFingerprint($policy),
             'vary' => $this->varyHeaders($request, $policy),
             'tags' => $this->tagGenerations($tags),
