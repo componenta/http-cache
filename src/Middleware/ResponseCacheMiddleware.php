@@ -82,9 +82,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 : $this->withDebugHeader(ResponseMetadata::protectPrivate($handler->handle($request), $policy), 'BYPASS');
         }
 
+        // A forced refresh or failed read may leave a previous entry behind.
+        $mayHaveEntry = true;
         if (!$this->bypassLookup($request, $cacheControl)) {
             try {
                 $cached = $this->store->fetch($key);
+                $mayHaveEntry = $cached !== null;
             } catch (Throwable $exception) {
                 $this->logger?->warning('HTTP cache read failed.', ['exception' => $exception]);
                 $cached = null;
@@ -115,6 +118,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $response = $response->withHeader(Header::DATE, HttpDate::format((int) $responseTime));
         }
 
+        $stored = false;
         try {
             $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
             $ttl = ResponseEligibility::ttl($response, $policy, $initialAge, $responseTime, $this->maxEntryBytes);
@@ -152,7 +156,17 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $stored = $this->store->store($key, $storedResponse, min($ttl, $remaining));
         } catch (Throwable $exception) {
             $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
-            $stored = false;
+        } finally {
+            // A new origin response supersedes an earlier response for this key,
+            // even if the new one cannot be retained. Do not refresh on a 304
+            // without implementing the validator/metadata merge contract.
+            if (!$stored && $mayHaveEntry) {
+                try {
+                    $this->store->delete($key);
+                } catch (Throwable $exception) {
+                    $this->logger?->error('HTTP cache superseded entry removal failed.', ['exception' => $exception]);
+                }
+            }
         }
 
         return $this->withDebugHeader($stored ? $response : ResponseMetadata::protectPrivate($response, $policy), $stored ? 'MISS' : 'BYPASS');

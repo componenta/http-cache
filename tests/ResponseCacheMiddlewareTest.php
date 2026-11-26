@@ -642,6 +642,24 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
     }
 
+    public function testFailedReplacementEvictsPreviousEntry(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->keyGenerator();
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::once())->method('store')->willReturn(false);
+        $store->expects(self::once())->method('delete')->with('cache-key');
+        $invalidator = $this->createStub(CacheInvalidatorInterface::class);
+        $handler = $this->handler(new Response(200, [], 'new'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process((new ServerRequest('GET', 'https://example.test/items'))->withHeader('Cache-Control', 'no-cache'), $handler);
+
+        self::assertSame('new', (string) $response->getBody());
+    }
+
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

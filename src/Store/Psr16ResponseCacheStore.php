@@ -15,6 +15,7 @@ use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\SimpleCache\CacheInterface;
+use RuntimeException;
 
 final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterface
 {
@@ -107,7 +108,9 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
     public function delete(string $key): void
     {
-        $this->cache->delete($key);
+        if (!$this->cache->delete($key)) {
+            throw new RuntimeException('HTTP cache entry could not be removed.');
+        }
     }
 
     /**

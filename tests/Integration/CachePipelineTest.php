@@ -82,6 +82,42 @@ final class CachePipelineTest extends TestCase
         self::assertSame('fresh', (string) $hit->getBody());
     }
 
+    public function testNonStorableRefreshCannotReviveSupersededResponse(): void
+    {
+        $cache = $this->container(private: false)->get(ResponseCacheMiddleware::class);
+        self::assertInstanceOf(ResponseCacheMiddleware::class, $cache);
+        $request = CacheRequest::forHandler('catalog.handler');
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::exactly(3))->method('handle')->willReturnOnConsecutiveCalls(
+            new Response(200, [], 'old'),
+            new Response(200, ['Cache-Control' => 'no-store'], 'changed'),
+            new Response(200, [], 'new'),
+        );
+
+        self::assertSame('old', (string) $cache->process($request, $origin)->getBody());
+        $refresh = $cache->process($request->withHeader('Cache-Control', 'no-cache'), $origin);
+        self::assertSame('changed', (string) $refresh->getBody());
+        self::assertSame('BYPASS', $refresh->getHeaderLine('X-Componenta-Cache'));
+        self::assertSame('new', (string) $cache->process($request, $origin)->getBody());
+        self::assertSame('HIT', $cache->process($request, $origin)->getHeaderLine('X-Componenta-Cache'));
+    }
+
+    public function testRequestNoStoreDoesNotEvictAnExistingEntry(): void
+    {
+        $cache = $this->container(private: false)->get(ResponseCacheMiddleware::class);
+        self::assertInstanceOf(ResponseCacheMiddleware::class, $cache);
+        $request = CacheRequest::forHandler('catalog.handler');
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::exactly(2))->method('handle')->willReturnOnConsecutiveCalls(
+            new Response(200, [], 'cached'),
+            new Response(200, [], 'uncached'),
+        );
+
+        $cache->process($request, $origin);
+        self::assertSame('uncached', (string) $cache->process($request->withHeader('Cache-Control', 'no-store'), $origin)->getBody());
+        self::assertSame('cached', (string) $cache->process($request, $origin)->getBody());
+    }
+
     private function container(bool $private): \Psr\Container\ContainerInterface
     {
         $psr17 = new Psr17Factory();

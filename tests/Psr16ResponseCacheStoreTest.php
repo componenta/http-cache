@@ -13,6 +13,16 @@ use PHPUnit\Framework\TestCase;
 
 final class Psr16ResponseCacheStoreTest extends TestCase
 {
+    public function testDeleteFailureIsVisible(): void
+    {
+        $cache = $this->createStub(\Psr\SimpleCache\CacheInterface::class);
+        $cache->method('delete')->willReturn(false);
+        $store = new Psr16ResponseCacheStore($cache);
+
+        $this->expectException(\RuntimeException::class);
+        $store->delete('key');
+    }
+
     public function testRejectsBodyLargerThanConfiguredLimit(): void
     {
         $cache = new InMemoryCache();
