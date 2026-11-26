@@ -163,7 +163,10 @@ final class ResponseEligibility
 
     public static function hasSafeStorageMetadata(ResponseInterface $response): bool
     {
-        foreach (['Set-Cookie', 'Content-Range', 'X-Accel-Redirect', 'X-Sendfile'] as $field) {
+        // Transfer codings and trailers belong to the transport. A PSR-7
+        // stream alone cannot prove that all codings were decoded or that
+        // trailer metadata has been incorporated into the representation.
+        foreach (['Set-Cookie', 'Content-Range', 'X-Accel-Redirect', 'X-Sendfile', 'Transfer-Encoding', 'Trailer'] as $field) {
             if ($response->hasHeader($field)) {
                 return false;
             }
@@ -172,7 +175,6 @@ final class ResponseEligibility
         if (!self::validContentFraming(
             $response->getStatusCode(),
             $response->getHeader(Header::CONTENT_LENGTH),
-            $response->hasHeader(Header::TRANSFER_ENCODING),
         )) {
             return false;
         }
@@ -193,17 +195,17 @@ final class ResponseEligibility
     }
 
     /** @param array<string> $lengths */
-    public static function validContentFraming(int $status, array $lengths, bool $transferEncoded = false): bool
+    public static function validContentFraming(int $status, array $lengths): bool
     {
         $length = self::contentLength($lengths);
-        if ($length === false || ($length !== null && $transferEncoded)) {
+        if ($length === false) {
             return false;
         }
 
-        // RFC 9110 §8.6 and RFC 9112 §6.1 prohibit both fields for 204.
+        // RFC 9110 §8.6 prohibits Content-Length for 204.
         // HEAD may otherwise advertise the length of the selected representation.
         if ($status === 204) {
-            return $length === null && !$transferEncoded;
+            return $length === null;
         }
 
         return $status !== 205 || $length === null || $length === '0';
