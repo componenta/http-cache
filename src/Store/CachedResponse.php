@@ -132,6 +132,7 @@ final readonly class CachedResponse
                     return null;
                 }
             }
+            /** @var list<string> $values */
             $normalized[$lowerName] = $values;
         }
 

@@ -49,7 +49,10 @@ final class EntityTag
         return $first !== null && $second !== null && $first === $second;
     }
 
-    /** @param array<string> $values @return list<string> */
+    /**
+     * @param array<string> $values
+     * @return list<string>
+     */
     private static function splitTags(array $values): array
     {
         $parts = [];

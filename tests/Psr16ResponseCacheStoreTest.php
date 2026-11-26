@@ -206,7 +206,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $body->method('isSeekable')->willReturn(true);
         $body->method('getSize')->willReturn(4);
         $body->method('tell')->willReturn(0);
-        $body->method('eof')->willReturnOnConsecutiveCalls(false, true);
+        $body->method('eof')->willReturn(true);
         $body->method('read')->willReturnCallback(static function (): string {
             sleep(1);
             return 'body';

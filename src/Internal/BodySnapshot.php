@@ -25,19 +25,17 @@ final class BodySnapshot
 
         try {
             $body->rewind();
-            while (!$body->eof()) {
+            do {
                 $chunk = $body->read(8192);
-                if ($chunk === '') {
-                    if (!$body->eof()) {
-                        return null;
-                    }
-                    break;
+                $eof = $body->eof();
+                if ($chunk === '' && !$eof) {
+                    return null;
                 }
                 if (strlen($chunk) > $maxBytes - strlen($contents)) {
                     return null;
                 }
                 $contents .= $chunk;
-            }
+            } while (!$eof);
 
             return $size !== null && strlen($contents) !== $size ? null : $contents;
         } finally {
