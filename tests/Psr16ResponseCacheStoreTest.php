@@ -62,6 +62,11 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertFalse($store->store('informational', new Response(101), 60));
         self::assertFalse($store->store('partial', new Response(206), 60));
         self::assertFalse($store->store('not-modified', new Response(304), 60));
+        foreach ([428, 429, 431, 511] as $status) {
+            self::assertFalse($store->store('forbidden', new Response($status, ['Cache-Control' => 'public, max-age=60']), 60));
+        }
+        self::assertFalse($store->store('invalid-204', new Response(204, [], 'body'), 60));
+        self::assertFalse($store->store('invalid-205', new Response(205, [], 'body'), 60));
         self::assertSame([], $cache->values);
     }
 
@@ -152,6 +157,12 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         foreach ([
             ['status' => 206],
             ['status' => 304],
+            ['status' => 428],
+            ['status' => 429],
+            ['status' => 431],
+            ['status' => 511],
+            ['status' => 204],
+            ['status' => 205],
             ['headers' => ['Set-Cookie' => ['session=secret']]],
             ['headers' => ['Content-Range' => ['bytes 0-1/4']]],
             ['headers' => ['Cache-Control' => ['no-store']]],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Store;
 
+use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -93,11 +94,10 @@ final readonly class CachedResponse
 
         if (
             !is_int($status)
-            || $status < 200
-            || $status > 599
-            || in_array($status, [206, 304], true)
+            || !CacheableStatus::allows($status)
             || !is_array($headers)
             || !is_string($body)
+            || (CacheableStatus::forbidsContent($status) && $body !== '')
             || !is_int($storedAt)
             || $storedAt < 0
             || !is_int($ageAtStore)

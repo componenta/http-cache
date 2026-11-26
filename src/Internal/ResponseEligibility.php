@@ -21,7 +21,7 @@ final class ResponseEligibility
         float $responseTime,
         int $maxEntryBytes,
     ): ?int {
-        if (!$policy->allowsStatus($response->getStatusCode())) {
+        if (!CacheableStatus::allows($response->getStatusCode()) || !$policy->allowsStatus($response->getStatusCode())) {
             return null;
         }
 

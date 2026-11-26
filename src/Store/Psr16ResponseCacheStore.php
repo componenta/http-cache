@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Store;
 
+use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
@@ -58,8 +59,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
         if (
             $ttl <= 0
-            || $status < 200
-            || in_array($status, [206, 304], true)
+            || !CacheableStatus::allows($status)
             || !ResponseEligibility::hasSafeStorageMetadata($response)
         ) {
             return false;
@@ -76,7 +76,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
         $contents = BodySnapshot::read($response->getBody(), $this->maxEntryBytes - $headerBytes);
 
-        if ($contents === null) {
+        if ($contents === null || (CacheableStatus::forbidsContent($status) && $contents !== '')) {
             return false;
         }
 

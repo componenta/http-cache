@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Policy;
 
+use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\HttpMethod;
 use InvalidArgumentException;
 
@@ -141,7 +142,7 @@ final readonly class HttpCachePolicy
         $normalized = [];
 
         foreach ($statuses as $status) {
-            if (!is_int($status) || $status < 200 || $status > 599 || in_array($status, [206, 304], true)) {
+            if (!is_int($status) || !CacheableStatus::allows($status)) {
                 throw new InvalidArgumentException('HTTP cache policy statuses must be supported final response status codes.');
             }
 

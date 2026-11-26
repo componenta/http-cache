@@ -48,6 +48,10 @@ final class HttpCachePolicyTest extends TestCase
         yield 'informational' => [101];
         yield 'partial content' => [206];
         yield 'not modified' => [304];
+        yield 'precondition required' => [428];
+        yield 'too many requests' => [429];
+        yield 'request header fields too large' => [431];
+        yield 'network authentication required' => [511];
     }
 
     public function testWireMethodsAreCaseSensitive(): void
