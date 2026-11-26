@@ -10,6 +10,7 @@ use Componenta\Http\Cache\Internal\ContainerService;
 use Componenta\Http\Cache\Invalidation\Psr16TagVersionStore;
 use Psr\Container\ContainerInterface;
 use Psr\SimpleCache\CacheInterface;
+use RuntimeException;
 
 final readonly class Psr16TagVersionStoreFactory
 {
@@ -18,9 +19,15 @@ final readonly class Psr16TagVersionStoreFactory
         $config = ContainerService::get($container, Config::class);
         $prefix = $config->string(ConfigKey::KEY_PREFIX, 'http-cache');
 
+        $ttl = $config->get(ConfigKey::TAG_GENERATION_TTL, Psr16TagVersionStore::DEFAULT_GENERATION_TTL);
+        if (!is_int($ttl) || $ttl <= 0) {
+            throw new RuntimeException(sprintf('%s config value must be a positive integer.', ConfigKey::TAG_GENERATION_TTL));
+        }
+
         return new Psr16TagVersionStore(
             cache: ContainerService::get($container, CacheInterface::class),
             prefix: $prefix . ':tag',
+            generationTtl: $ttl,
         );
     }
 }

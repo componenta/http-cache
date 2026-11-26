@@ -14,10 +14,17 @@ use function random_int;
 
 final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
 {
+    public const int DEFAULT_GENERATION_TTL = 86_400;
+
     public function __construct(
         private CacheInterface $cache,
         private string $prefix = 'http-cache:tag',
-    ) {}
+        private int $generationTtl = self::DEFAULT_GENERATION_TTL,
+    ) {
+        if ($generationTtl <= 0) {
+            throw new InvalidArgumentException('HTTP cache tag generation TTL must be greater than zero.');
+        }
+    }
 
     #[Override]
     public function versions(array $tags): array
@@ -57,7 +64,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
         $failure = null;
         foreach (array_keys($keys) as $key) {
             try {
-                if (!$this->cache->set($key, $this->nextVersion($key))) {
+                if (!$this->cache->set($key, $this->nextVersion($key), $this->generationTtl)) {
                     throw new RuntimeException('Unable to invalidate HTTP cache tag.');
                 }
             } catch (Throwable $exception) {
@@ -99,7 +106,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
 
         $replacement = $this->generateVersion();
 
-        if (!$this->cache->set($key, $replacement)) {
+        if (!$this->cache->set($key, $replacement, $this->generationTtl)) {
             throw new RuntimeException('Unable to initialize HTTP cache tag generation.');
         }
 

@@ -11,5 +11,7 @@ final class ConfigKey
     public const string KEY_PREFIX = 'Componenta\Http\Cache::key_prefix';
     public const string MAX_ENTRY_BYTES = 'Componenta\Http\Cache::max_entry_bytes';
 
+    public const string TAG_GENERATION_TTL = 'Componenta\Http\Cache::tag_generation_ttl';
+
     private function __construct() {}
 }

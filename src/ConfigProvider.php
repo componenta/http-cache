@@ -68,6 +68,7 @@ final class ConfigProvider extends BaseConfigProvider
             ConfigKey::DEBUG_HEADER => false,
             ConfigKey::KEY_PREFIX => 'http-cache',
             ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
+            ConfigKey::TAG_GENERATION_TTL => Psr16TagVersionStore::DEFAULT_GENERATION_TTL,
         ];
     }
 }

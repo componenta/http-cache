@@ -13,6 +13,41 @@ use RuntimeException;
 
 final class Psr16TagVersionStoreTest extends TestCase
 {
+    public function testGenerationWritesUseFiniteTtlAndReadsDoNotRenewIt(): void
+    {
+        $cache = new TagSpyCache();
+        $store = new Psr16TagVersionStore($cache, generationTtl: 10);
+        $first = $store->versions(['catalog']);
+        self::assertSame(10, $cache->lastTtl);
+        $cache->now = 9;
+        self::assertSame($first, $store->versions(['catalog']));
+        $cache->now = 10;
+        $replacement = $store->versions(['catalog']);
+        self::assertNotSame($first, $replacement);
+        self::assertSame(10, $cache->lastTtl);
+
+        $store->invalidateTags(['catalog']);
+        $invalidated = $store->versions(['catalog']);
+        self::assertNotSame($replacement, $invalidated);
+        self::assertSame(10, $cache->lastTtl);
+        $cache->now = 20;
+        self::assertNotSame($invalidated, $store->versions(['catalog']));
+    }
+
+    public function testGenerationTtlDefaultsToFiniteValue(): void
+    {
+        $cache = new TagSpyCache();
+        (new Psr16TagVersionStore($cache))->versions(['catalog']);
+        self::assertSame(Psr16TagVersionStore::DEFAULT_GENERATION_TTL, $cache->lastTtl);
+        self::assertGreaterThan(0, $cache->lastTtl);
+    }
+
+    public function testNonpositiveGenerationTtlIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new Psr16TagVersionStore(new TagSpyCache(), generationTtl: 0);
+    }
+
     public function testUsesPortablePsr16Keys(): void
     {
         $cache = new TagSpyCache();
@@ -171,10 +206,18 @@ final class TagSpyCache implements CacheInterface
     public ?string $lastKey = null;
     public bool $setResult = true;
     public mixed $storedValue = null;
+    public ?int $lastTtl = null;
+    public int $now = 0;
+    private ?int $expiresAt = null;
 
     public function get(string $key, mixed $default = null): mixed
     {
         $this->lastKey = $key;
+
+        if ($this->expiresAt !== null && $this->now >= $this->expiresAt) {
+            $this->storedValue = null;
+            $this->expiresAt = null;
+        }
 
         return $this->storedValue ?? $default;
     }
@@ -185,6 +228,8 @@ final class TagSpyCache implements CacheInterface
 
         if ($this->setResult) {
             $this->storedValue = $value;
+            $this->lastTtl = is_int($ttl) ? $ttl : null;
+            $this->expiresAt = $this->lastTtl === null ? null : $this->now + $this->lastTtl;
         }
 
         return $this->setResult;
