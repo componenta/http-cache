@@ -308,6 +308,38 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertNotSame('', $response->getHeaderLine('Expires'));
     }
 
+    public function testConditionalHitDoesNotReconstructTheStoredBody(): void
+    {
+        $factory = new Psr17Factory();
+        $streams = $this->createMock(\Psr\Http\Message\StreamFactoryInterface::class);
+        $streams->expects(self::never())->method('createStream');
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['eTaG' => ['W/"abc"']],
+            body: 'large representation',
+            storedAt: time(),
+            freshUntil: time() + 60,
+        ));
+        $middleware = new ResponseCacheMiddleware(
+            policies: $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            keys: $this->keyGenerator(),
+            store: $store,
+            invalidator: $this->createStub(CacheInvalidatorInterface::class),
+            responseFactory: $factory,
+            streamFactory: $streams,
+        );
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::never())->method('handle');
+        $request = (new ServerRequest('GET', 'https://example.test/items'))
+            ->withHeader('If-None-Match', '"abc"');
+
+        $response = $middleware->process($request, $origin);
+        self::assertSame(304, $response->getStatusCode());
+        self::assertSame('W/"abc"', $response->getHeaderLine('ETag'));
+        self::assertSame('', (string) $response->getBody());
+    }
+
     public function testConditionalRequestDoesNotTurnCachedErrorInto304(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, statuses: [404]);

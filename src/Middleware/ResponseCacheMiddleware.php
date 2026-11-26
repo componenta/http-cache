@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Middleware;
 
 use Componenta\Http\Cache\Internal\BodySnapshot;
+use Componenta\Http\Cache\Internal\ConditionalRequest;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
@@ -12,7 +13,6 @@ use Componenta\Http\Cache\Key\RequestTarget;
 use Componenta\Http\Cache\Policy\CachePolicyProviderInterface;
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Cache\Protocol\CacheControl;
-use Componenta\Http\Cache\Protocol\EntityTag;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Protocol\ResponseAge;
@@ -173,19 +173,18 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function cachedResponse(ServerRequestInterface $request, CachedResponse $cached): ResponseInterface
     {
-        $response = $cached->toResponse($this->responseFactory, $this->streamFactory)
-            ->withHeader(Header::AGE, (string) $cached->age($this->clock->now()->getTimestamp()));
+        $now = $this->clock->now()->getTimestamp();
+        $response = ConditionalRequest::isNotModified($request, $cached, $now)
+            ? $this->notModifiedResponse($cached)
+            : $cached->toResponse($this->responseFactory, $this->streamFactory);
 
-        if ($this->isNotModified($request, $response, $cached)) {
-            $response = $this->notModifiedResponse($response);
-        }
-
-        return $this->withDebugHeader($response, 'HIT');
+        return $this->withDebugHeader($response->withHeader(Header::AGE, (string) $cached->age($now)), 'HIT');
     }
 
-    private function notModifiedResponse(ResponseInterface $cached): ResponseInterface
+    private function notModifiedResponse(CachedResponse $cached): ResponseInterface
     {
         $response = $this->responseFactory->createResponse(304);
+        $headers = array_change_key_case($cached->headers, CASE_LOWER);
 
         foreach ([
             Header::CACHE_CONTROL,
@@ -195,10 +194,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             Header::EXPIRES,
             Header::VARY,
             Header::LAST_MODIFIED,
-            Header::AGE,
         ] as $header) {
-            if ($cached->hasHeader($header)) {
-                $response = $response->withHeader($header, $cached->getHeader($header));
+            $values = $headers[strtolower($header)] ?? null;
+            if ($values !== null) {
+                $response = $response->withHeader($header, $values);
             }
         }
 
@@ -454,46 +453,6 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         hash_update($context, $contents);
 
         return 'W/"' . hash_final($context) . '"';
-    }
-
-    private function isNotModified(
-        ServerRequestInterface $request,
-        ResponseInterface $response,
-        CachedResponse $cached,
-    ): bool {
-        if ($cached->status !== 200) {
-            return false;
-        }
-
-        if ($request->hasHeader(Header::IF_NONE_MATCH)) {
-            $etag = $response->hasHeader(Header::ETAG) ? $response->getHeaderLine(Header::ETAG) : null;
-
-            return EntityTag::ifNoneMatch($request->getHeader(Header::IF_NONE_MATCH), $etag);
-        }
-
-        if (!$request->hasHeader(Header::IF_MODIFIED_SINCE)) {
-            return false;
-        }
-
-        $condition = HttpDate::parse($request->getHeaderLine(Header::IF_MODIFIED_SINCE), $this->clock->now()->getTimestamp());
-
-        if ($condition === null) {
-            return false;
-        }
-
-        if ($response->hasHeader(Header::LAST_MODIFIED)) {
-            $validator = HttpDate::parse($response->getHeaderLine(Header::LAST_MODIFIED));
-
-            if ($validator === null) {
-                return false;
-            }
-        } elseif ($response->hasHeader(Header::DATE)) {
-            $validator = HttpDate::parse($response->getHeaderLine(Header::DATE)) ?? $cached->storedAt;
-        } else {
-            $validator = $cached->storedAt;
-        }
-
-        return $validator <= $condition;
     }
 
     private function bypassLookup(ServerRequestInterface $request, CacheControl $cacheControl): bool
