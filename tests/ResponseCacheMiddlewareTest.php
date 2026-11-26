@@ -19,6 +19,7 @@ use DateTimeImmutable;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
@@ -692,6 +693,69 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
 
         self::assertSame(504, $response->getStatusCode());
+    }
+
+    #[DataProvider('cachedResponseTimingCases')]
+    public function testCachedResponseTimingIsVerifiedAfterReconstruction(
+        string $cacheControl,
+        bool $conditional,
+        int $advance,
+        int $deadline,
+        int $expectedStatus,
+        ?string $expectedAge,
+    ): void {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['ETag' => ['"cached"'], 'Cache-Control' => ['public, max-age=60']],
+            body: 'cached',
+            storedAt: 990,
+            freshUntil: $deadline,
+        ));
+        $factory = $this->createStub(\Psr\Http\Message\ResponseFactoryInterface::class);
+        $factory->method('createResponse')->willReturnCallback(
+            static function (int $status = 200) use ($clock, $advance): ResponseInterface {
+                if ($status !== 504) {
+                    $clock->advance($advance);
+                }
+                return new Response($status);
+            },
+        );
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::never())->method('handle');
+        $middleware = new ResponseCacheMiddleware(
+            policies: $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            keys: $this->keyGenerator(),
+            store: $store,
+            invalidator: $this->createStub(CacheInvalidatorInterface::class),
+            responseFactory: $factory,
+            streamFactory: new Psr17Factory(),
+            clock: $clock,
+        );
+        $request = (new ServerRequest('GET', 'https://example.test/items'))
+            ->withHeader('Cache-Control', $cacheControl);
+        if ($conditional) {
+            $request = $request->withHeader('If-None-Match', '"cached"');
+        }
+
+        $response = $middleware->process($request, $origin);
+        self::assertSame($expectedStatus, $response->getStatusCode());
+        if ($expectedAge !== null) {
+            self::assertSame($expectedAge, $response->getHeaderLine('Age'));
+        }
+    }
+
+    /** @return iterable<string, array{string, bool, int, int, int, ?string}> */
+    public static function cachedResponseTimingCases(): iterable
+    {
+        yield 'body expires during reconstruction' => ['only-if-cached', false, 1, 1001, 504, null];
+        yield '304 expires during reconstruction' => ['only-if-cached', true, 1, 1001, 504, null];
+        yield 'request max-age exceeded' => ['only-if-cached, max-age=10', false, 1, 1050, 504, null];
+        yield 'request min-fresh no longer met' => ['only-if-cached, min-fresh=5', false, 1, 1005, 504, null];
+        yield 'fresh body uses final age' => ['only-if-cached', false, 1, 1050, 200, '11'];
+        yield 'fresh 304 uses final age' => ['only-if-cached', true, 1, 1050, 304, '11'];
+        yield 'same second remains fresh' => ['only-if-cached', false, 0, 1050, 200, '10'];
     }
 
     public function testExpiredStoredEntryIsRejectedEvenIfBackendReturnsIt(): void
