@@ -11,7 +11,8 @@ final class EntityTag
      */
     public static function ifNoneMatch(array $ifNoneMatchValues, ?string $current): bool
     {
-        $candidates = HeaderList::split($ifNoneMatchValues);
+        // Entity-tag opaque values are not quoted-string: backslash is literal.
+        $candidates = self::splitTags($ifNoneMatchValues);
 
         if ($candidates === []) {
             return false;
@@ -46,6 +47,35 @@ final class EntityTag
         $second = self::opaqueTag($second);
 
         return $first !== null && $second !== null && $first === $second;
+    }
+
+    /** @param array<string> $values @return list<string> */
+    private static function splitTags(array $values): array
+    {
+        $parts = [];
+        $start = 0;
+        $quoted = false;
+        $value = implode(',', $values);
+        $length = strlen($value);
+
+        for ($i = 0; $i < $length; ++$i) {
+            if ($value[$i] === '"') {
+                $quoted = !$quoted;
+            } elseif ($value[$i] === ',' && !$quoted) {
+                $part = trim(substr($value, $start, $i - $start));
+                if ($part !== '') {
+                    $parts[] = $part;
+                }
+                $start = $i + 1;
+            }
+        }
+
+        $part = trim(substr($value, $start));
+        if ($part !== '') {
+            $parts[] = $part;
+        }
+
+        return $parts;
     }
 
     private static function opaqueTag(string $value): ?string

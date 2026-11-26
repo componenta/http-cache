@@ -101,6 +101,13 @@ final class ProtocolTest extends TestCase
         self::assertTrue(EntityTag::ifNoneMatch(['"a,b", "other"'], 'W/"a,b"'));
     }
 
+    public function testIfNoneMatchTreatsBackslashAsLiteralOpaqueTagCharacter(): void
+    {
+        self::assertTrue(EntityTag::ifNoneMatch(['"a\\", "other"'], 'W/"a\\"'));
+        self::assertTrue(EntityTag::ifNoneMatch(['"a\\", "other"'], '"other"'));
+        self::assertFalse(EntityTag::ifNoneMatch(['"a\\", "other"'], '"a"'));
+    }
+
     public function testIfNoneMatchRejectsWildcardMixedWithOtherTags(): void
     {
         self::assertFalse(EntityTag::ifNoneMatch(['*, "abc"'], 'W/"abc"'));
