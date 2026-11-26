@@ -107,16 +107,17 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
 
     public function testTagSnapshotOrderingDoesNotChangeKey(): void
     {
-        $first = $this->createStub(TagVersionStoreInterface::class);
-        $first->method('versions')->willReturnCallback(
-            static fn (array $tags): array => array_fill_keys($tags, 1),
-        );
-        $second = $this->createStub(TagVersionStoreInterface::class);
-        $second->method('versions')->willReturnCallback(
-            static fn (array $tags): array => array_reverse(array_fill_keys($tags, 1), true),
-        );
         $request = new ServerRequest('GET', 'https://example.test/items');
         $policy = new HttpCachePolicy(ttl: 60, tags: ['catalog', '42']);
+        $snapshot = [
+            'catalog' => 1,
+            42 => 2,
+            \Componenta\Http\Cache\Key\RequestTarget::cacheTag($request) => 3,
+        ];
+        $first = $this->createStub(TagVersionStoreInterface::class);
+        $first->method('versions')->willReturn($snapshot);
+        $second = $this->createStub(TagVersionStoreInterface::class);
+        $second->method('versions')->willReturn(array_reverse($snapshot, true));
 
         self::assertSame(
             (new DefaultCacheKeyGenerator($first))->generate($request, $policy),
