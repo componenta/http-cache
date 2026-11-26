@@ -106,6 +106,7 @@ final class ResponseMetadata
     public static function weakEtag(ResponseInterface $response, string $contents): string
     {
         $context = hash_init('sha256');
+        hash_update($context, "componenta-http-cache-etag-v2\0");
 
         foreach ([
             Header::CONTENT_TYPE,
@@ -114,9 +115,13 @@ final class ResponseMetadata
             Header::CONTENT_LOCATION,
             Header::CONTENT_DIGEST,
         ] as $header) {
-            hash_update($context, strtolower($header) . "\0");
-            foreach ($response->getHeader($header) as $value) {
-                hash_update($context, $value . "\0");
+            // Fixed field order, explicit value counts and byte lengths make
+            // the representation unambiguous even for binary content.
+            $values = $response->getHeader($header);
+            hash_update($context, count($values) . ':');
+            foreach ($values as $value) {
+                hash_update($context, strlen($value) . ':');
+                hash_update($context, $value);
             }
         }
 
