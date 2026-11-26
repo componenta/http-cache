@@ -179,3 +179,5 @@ It reports cache states such as `HIT`, `MISS`, `BYPASS` and `INVALIDATION-FAILED
 ## Verification
 
 The repository quality workflow tests PHP 8.5.13 and the current PHP 8.5 patch against both lowest and highest compatible dependency sets, using the actual development dependencies described in [development integration](docs/development.md). It runs strict Composer validation, dependency security audit, PHPStan at level max for `src` and `tests`, and PHPUnit tests.
+
+Run `composer bench` after installing the development dependency graph. PHPBench measures public middleware hits, callback-policy hits, conditional 304 hits, cold misses (including eviction of the previous entry), request bypass, a 1 MiB response miss, batched tag generation reads and tag invalidation. The benchmark backend is in-memory PSR-16: these are microbenchmarks, not distributed cache or HTTP server load tests. CI runs the suite on the latest supported PHP 8.5 patch with highest dependencies; no hardware-dependent latency threshold is imposed.

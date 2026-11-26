@@ -19,6 +19,7 @@
     },
     "require-dev": {
         "nyholm/psr7": "^1.8",
+        "phpbench/phpbench": "^1.7.1",
         "phpstan/phpstan": "^2.2.14",
         "phpstan/phpstan-phpunit": "^2.0.19",
         "phpunit/phpunit": "^13.4"
@@ -39,7 +40,8 @@
         "check": [
             "@phpstan",
             "@test"
-        ]
+        ],
+        "bench": "@php vendor/bin/phpbench run --report=aggregate"
     },
     "config": {
         "sort-packages": true

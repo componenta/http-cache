@@ -56,6 +56,7 @@ final class AttributeCachePolicyProviderTest extends TestCase
         self::assertFalse($vetoPolicy->enabled);
 
         $repeatedPolicy = $provider->policyFor($first);
+        self::assertNotNull($repeatedPolicy);
         self::assertSame(['catalog', 'category:10'], $repeatedPolicy->tags);
     }
 

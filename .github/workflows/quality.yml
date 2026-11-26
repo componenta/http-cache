@@ -37,3 +37,5 @@ jobs:
         run: COMPOSER=.composer-development.json composer update --no-interaction --prefer-dist --prefer-lowest --prefer-stable --no-progress
       - run: COMPOSER=.composer-development.json composer audit
       - run: composer check
+      - if: matrix.php == '8.5' && matrix.dependencies == 'highest'
+        run: composer bench
