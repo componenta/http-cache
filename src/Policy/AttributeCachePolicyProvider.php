@@ -22,16 +22,16 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
             return null;
         }
 
-        return $this->policyForHandler($match->handler->value);
+        return $this->policyForHandler($match->handler->value, $request);
     }
 
-    private function policyForHandler(mixed $handler): ?HttpCachePolicy
+    private function policyForHandler(mixed $handler, ServerRequestInterface $request): ?HttpCachePolicy
     {
         if (is_array($handler) && count($handler) === 2 && is_string($handler[1])) {
             $target = $handler[0];
 
             if (is_object($target) || (is_string($target) && class_exists($target))) {
-                return $this->policyForClassAndMethod($target, $handler[1]);
+                return $this->policyForClassAndMethod($target, $handler[1], $request);
             }
 
             return null;
@@ -42,7 +42,7 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
                 [$class, $method] = explode('::', $handler, 2);
 
                 return class_exists($class)
-                    ? $this->policyForClassAndMethod($class, $method)
+                    ? $this->policyForClassAndMethod($class, $method, $request)
                     : null;
             }
 
@@ -50,17 +50,17 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
                 return null;
             }
 
-            return $this->policyForClassAndMethod($handler, $this->handlerMethod($handler));
+            return $this->policyForClassAndMethod($handler, $this->handlerMethod($handler), $request);
         }
 
         if (!is_object($handler) || $handler instanceof Closure) {
             return null;
         }
 
-        return $this->policyForClassAndMethod($handler, $this->handlerMethod($handler));
+        return $this->policyForClassAndMethod($handler, $this->handlerMethod($handler), $request);
     }
 
-    private function policyForClassAndMethod(object|string $target, ?string $method): ?HttpCachePolicy
+    private function policyForClassAndMethod(object|string $target, ?string $method, ServerRequestInterface $request): ?HttpCachePolicy
     {
         if (is_string($target) && !class_exists($target)) {
             return null;
@@ -69,14 +69,14 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
         $class = new ReflectionClass($target);
 
         if ($method !== null && $class->hasMethod($method)) {
-            $policy = $this->policyFromAttributes($class->getMethod($method)->getAttributes(CacheResponse::class));
+            $policy = $this->policyFromAttributes($class->getMethod($method)->getAttributes(CacheResponse::class), $request);
 
             if ($policy !== null) {
                 return $policy;
             }
         }
 
-        return $this->policyFromAttributes($class->getAttributes(CacheResponse::class));
+        return $this->policyFromAttributes($class->getAttributes(CacheResponse::class), $request);
     }
 
     private function handlerMethod(object|string $handler): ?string
@@ -95,7 +95,7 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
     /**
      * @param list<\ReflectionAttribute<CacheResponse>> $attributes
      */
-    private function policyFromAttributes(array $attributes): ?HttpCachePolicy
+    private function policyFromAttributes(array $attributes, ServerRequestInterface $request): ?HttpCachePolicy
     {
         if ($attributes === []) {
             return null;
@@ -104,6 +104,6 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
         /** @var CacheResponse $attribute */
         $attribute = $attributes[0]->newInstance();
 
-        return $attribute->toPolicy();
+        return $attribute->toPolicy($request);
     }
 }

@@ -37,6 +37,7 @@ final readonly class HttpCachePolicy
         private(set) bool $cacheSetCookie = false,
         private(set) bool $private = false,
         private(set) bool $generateEtag = true,
+        private(set) bool $enabled = true,
     ) {
         if ($ttl <= 0) {
             throw new InvalidArgumentException('HTTP cache policy TTL must be greater than zero.');
@@ -75,6 +76,7 @@ final readonly class HttpCachePolicy
             cacheSetCookie: self::boolValue($payload, 'cache_set_cookie', self::boolValue($payload, 'cacheSetCookie', false)),
             private: self::boolValue($payload, 'private', false),
             generateEtag: self::boolValue($payload, 'generate_etag', self::boolValue($payload, 'generateEtag', true)),
+            enabled: self::boolValue($payload, 'enabled', true),
         );
     }
 

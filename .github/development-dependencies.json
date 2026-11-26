@@ -1,0 +1,22 @@
+{
+    "di": {
+        "branch": "fix/callback-dependency-baseline-2026-11-26",
+        "alias": "6.0.x-dev",
+        "commit": "ded9a6dc44db2775c4753e73d9581d70caac6043"
+    },
+    "router": {
+        "branch": "fix/callback-dependency-baseline-2026-11-26",
+        "alias": "3.0.x-dev",
+        "commit": "8cc184cd44d14857511653e008cfc0a3ee8b0612"
+    },
+    "middleware-factory": {
+        "branch": "fix/callback-dependency-baseline-2026-11-26",
+        "alias": "2.1.x-dev",
+        "commit": "8eb058f32c7ba5939ba20095a5156cdee44d997b"
+    },
+    "http-responder": {
+        "branch": "fix/callback-dependency-baseline-2026-11-26",
+        "alias": "1.0.x-dev",
+        "commit": "6080a95ad9ebed4a659b8025df4ff0edb2d84add"
+    }
+}

@@ -1,6 +1,6 @@
 # Request-dependent callbacks for CacheResponse attributes
 
-**Readiness:** blocked by B1, review of the referenced conversation and its material decisions. This is a repository-grounded design draft, not an executable implementation instruction. The proposed target below must be reconciled with that conversation before production slices are derived.
+**Status:** normative contract for the native attribute callback implementation on PHP 8.5.13+ and the current Componenta dependency lines.
 
 ## Objective
 
@@ -16,7 +16,7 @@ The change does not add arbitrary cache-key replacement, response-dependent call
 
 The inspected baseline is `componenta/http-cache` `main` at `fbf72d98dca3172eb5a605fd8e38a5e99b4d54c3`; no other branches were discovered. No `AGENTS.md` or existing package specification directory was present in the inspected tree.
 
-Relevant current sources:
+Relevant baseline sources:
 
 - [CacheResponse](https://github.com/componenta/http-cache/blob/fbf72d98dca3172eb5a605fd8e38a5e99b4d54c3/src/Attribute/CacheResponse.php) validates static settings through `HttpCachePolicy` and exposes `toPolicy(): HttpCachePolicy`.
 - [HttpCachePolicy](https://github.com/componenta/http-cache/blob/fbf72d98dca3172eb5a605fd8e38a5e99b4d54c3/src/Policy/HttpCachePolicy.php) owns policy normalization and safety invariants. It is currently a data-only readonly value.
@@ -31,7 +31,7 @@ PHP 8.5 permits static anonymous functions and first-class callables in attribut
 
 Syntax availability is distinct from the supported native first-class callable attribute contract. That contract requires PHP 8.5.13+ because earlier PHP 8.5 releases could resolve a static callable in a trait constant expression against the first using class and bypass visibility checks. The [PHP 8.5.13 changelog](https://www.php.net/ChangeLog-8.php#8.5.13) records the native fix. The package must not emulate or patch this engine behavior.
 
-Source inspection establishes the baseline. No production implementation or test execution was performed for this specification-only work.
+The cited immutable sources establish the pre-change baseline. Implementation and verification evidence is recorded separately against the feature branch and its actual dependency revisions.
 
 ## Requirements and invariants
 
@@ -121,6 +121,8 @@ For one selected declaration:
 6. Combine static tags followed by dynamic tags and pass them through the same trimming/deduplication semantics as current `HttpCachePolicy` tag validation. Preserve first occurrence order.
 7. Return an enabled, normalized, data-only `HttpCachePolicy`.
 
+Each callback receives the original request object in its own argument slot. Reassigning a by-reference callback parameter must not replace the request passed to the other callback; ordinary mutation of application-owned objects remains native PHP behavior.
+
 The middleware evaluates a selected policy before key lookup on safe requests. Unsafe requests retain their existing early path and do not invoke attribute callbacks. The provider's public `policyFor()` method independently resolves the declaration for the request supplied by its caller; it does not duplicate the middleware's request eligibility rules.
 
 Dynamic tags are application invalidation groups. Their ordered output must be deterministic for equivalent request inputs, since the policy fingerprint and tag-generation data contribute to the key. A callback may return different values for a later request; the package must reevaluate it. This is not permission to derive tenant or authorization identity from untrusted input without the application's existing validation.
@@ -145,9 +147,9 @@ Cache predicates and tags are evaluated from request information available befor
 
 Attributes and conversion results are not memoized by route. A long-lived provider or middleware must not retain a prior request, its tags, or its enabled state. The package does not deep-clone requests or redefine PHP closure lifetime/state. Runtime callbacks remain developer-supplied code; they should perform the small request calculation represented by this contract and avoid request-external side effects.
 
-## Proposed usage
+## Usage
 
-These examples show the proposed API after implementation, not current package syntax.
+These examples use the callback contract implemented by this branch.
 
 ```php
 use Componenta\Http\Cache\Attribute\CacheResponse;
@@ -182,9 +184,11 @@ The application must resolve `previewMode` and `categoryId` before cache middlew
 
 ## Compatibility and runtime
 
+The release target is HTTP Cache 2.x. Both `dev-main` and `dev-spec/attribute-callbacks-2026-11-26` use `2.0.x-dev`; the stricter PHP and dependency baseline must not be published as another release of the existing 1.x line.
+
 Preserve current constructor parameter positions; append callback parameters and the new resolved-policy flag. Existing static attributes and configured policies continue to produce enabled policies by default. Preserve `toPolicy()` for declarations without callbacks and keep old enabled-policy key fingerprints stable.
 
-The package currently advertises PHP `^8.4`. Native callback syntax became available in PHP 8.5, while the supported native first-class callable attribute contract in this draft requires PHP 8.5.13+. B1 must settle the package-wide minimum: raise it, or retain PHP 8.4 static/runtime-construction support with separately gated PHP 8.5.13+ native-attribute coverage. Composer, CI, docs, and fixture loading must distinguish those supported surfaces consistently; PHP 8.5.0–8.5.12 must not be advertised as satisfying the full native callable scope/visibility contract. Do not add DI 6 solely to invoke these fixed-signature callbacks.
+The package requires PHP `^8.5.13` throughout Composer, CI, fixtures, and documentation. PHP 8.5 introduced the syntax; PHP 8.5.13 supplies the required native trait callable scope/visibility fix. PHP 8.4 support is removed. The dependency graph uses Componenta Config 4, Router 3, and HTTP 1 with their current compatible dependencies. Unreleased compatibility branches must be installed as actual source revisions, never disguised as released versions. Direct callback invocation adds no DI dependency.
 
 Existing response-cache payloads remain readable. Dynamic tags naturally select keys reflecting the newly configured policy; no response-store serialization migration or closure serialization support is introduced.
 
@@ -207,7 +211,7 @@ Use TDD against public attribute conversion, provider composition, key generatio
 | Construction/syntax | Constructing/reflecting callback metadata does not execute its rule. Static anonymous functions and private static first-class callables work on supported PHP 8.5.13+ runtimes; callback-backed `toPolicy()` without a request fails. |
 | Native scope | A shared trait declaring a first-class callable in a constant expression is used by two handler classes with their own private static predicate/tag methods. Repeatedly resolve both handlers' attributes on PHP 8.5.13+ and prove the correct class-specific decision/tags and scope are retained; native invalid private access must remain rejected. |
 
-Relevant existing proof locations are `tests/CacheResponseAttributeTest.php`, `tests/AttributeCachePolicyProviderTest.php`, `tests/CompositeCachePolicyProviderTest.php`, `tests/HttpCachePolicyTest.php`, `tests/DefaultCacheKeyGeneratorTest.php`, and `tests/ResponseCacheMiddlewareTest.php`. Use existing request/store test doubles and PSR-7 fixtures. Do not replace PHPUnit or migrate unrelated tests as part of this feature.
+Relevant existing proof locations are `tests/CacheResponseAttributeTest.php`, `tests/AttributeCachePolicyProviderTest.php`, `tests/CompositeCachePolicyProviderTest.php`, `tests/HttpCachePolicyTest.php`, `tests/DefaultCacheKeyGeneratorTest.php`, and `tests/ResponseCacheMiddlewareTest.php`. Use existing request/store test doubles and PSR-7 fixtures. Retain PHPUnit and the existing test structure; update the development dependency to its current compatible 13.4 line for the PHP 8.5 baseline without rewriting unrelated tests.
 
 After focused behavior checks, run the established `composer check` gate on the agreed minimum runtime and supported dependency combinations. Recheck the documented static-key preservation case and direct callback signature with static analysis. Do not claim performance improvements without measurements; the design adds request computation and keeps it out of origin execution and persisted metadata.
 
@@ -219,19 +223,23 @@ After focused behavior checks, run the established `composer check` gate on the 
 - `src/Middleware/ResponseCacheMiddleware.php`: honor the resolved selected-disabled policy before key/store access; retain existing safety/protocol paths.
 - Existing test files listed above: prove callback behavior, veto/fallback distinction, cross-request independence, security gates, and static-key preservation.
 - `README.md`: describe callback signatures, evaluation timing, disabled-vs-absent distinction, middleware prerequisites, runtime syntax, and failure behavior.
-- Composer/CI runtime configuration: change only according to B1's settled runtime decision.
+- Composer/CI runtime configuration: require PHP `^8.5.13`, verify the minimum and current PHP 8.5 patch, and install the actual latest compatible Componenta dependency revisions.
 
 `DefaultCacheKeyGenerator` is a verification boundary, not an automatic rewrite target: dynamic tags already flow through its policy fingerprint and generation lookup. `CachePolicyProviderInterface`, `CacheKeyGeneratorInterface`, response-store interfaces/serialization, and composite-provider ordering are retained. No new provider/resolver interface or persisted callback representation is required.
 
-## Blocking evidence and implementation sequencing
+## Implementation sequencing
 
-### B1 — Referenced conversation and material callback decisions
+### Slice 1 — Request resolution and explicit veto
 
-The required linked design discussion was unavailable during this specification-only review. It may settle callback input/DI semantics, key customization, the enabled/veto result model, or runtime compatibility differently. Its decisions must be reconciled with this document before implementation readiness can be claimed.
+Add failing public tests for lazy callback construction, strict results, missing-request errors, selected disabled policies, and method/config/composite precedence. Append callback parameters and the resolved-policy enabled flag; pass the current request through attribute selection and honor the veto before key/store access. Complete when callbacks are evaluated once per resolution, false cannot fall through, and malformed results fail visibly.
 
-The bounded evidence task is to retrieve the relevant text/decisions and reconcile the proposed fixed request callback contract, additive tags, explicit selected-disabled state, and runtime policy. No production mutation or prototype is needed. Stop when a single target is agreed by available task evidence and no material callback/policy behavior remains conditional.
+### Slice 2 — Cache identity and request lifecycle
 
-Do not execute production slices while B1 remains. After reconciliation, derive slices in this dependency order: explicit selected-disabled policy and predicate behavior through provider/middleware; dynamic tags through key/invalidation and request-lifecycle proof; native syntax, safety/protocol preservation, docs/runtime consistency, and convergence. Each slice must refer to the settled target and establish its public failing signal before implementation.
+Add failing middleware tests using real attribute resolution and key generation with controlled stores. Prove cache-hit evaluation without origin execution, cross-request independence, dynamic-tag and target-URI invalidation, preview veto of an existing entry, and only-if-cached behavior. Preserve full key partitioning and all request/response safety gates. No key algorithm or store representation rewrite is required.
+
+### Slice 3 — Native syntax, latest dependencies, and documentation
+
+Prove native static anonymous functions, repeated class-specific private static callables from a shared trait, and visibility failures on PHP 8.5.13+. Run the established complete test/static-analysis gates against the actual latest compatible Componenta graph. Record dependency SHAs and reproducible integration commands, then update public docs and runtime metadata to match the implemented contract.
 
 ## Convergence check
 

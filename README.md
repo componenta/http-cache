@@ -6,11 +6,14 @@ The cache is conservative by design: it caches only explicitly configured GET/HE
 
 ## Requirements
 
-- PHP 8.4+
-- Componenta Config 2.0.2+ or 3.x
-- Componenta Router 2.0.1+ or 3.x
+- PHP 8.5.13+
+- Componenta Config 4
+- Componenta Router 3
+- Componenta HTTP 1
 - PSR-7 / PSR-17 factories
 - PSR-16 cache implementation
+
+For the development branch and its unreleased dependency revisions, see [development integration](docs/development.md).
 
 ## Middleware order
 
@@ -49,6 +52,48 @@ final class CatalogHandler
 Configured route policies take precedence over attributes.
 
 Only GET and HEAD can be served from this response cache. Unsafe methods always reach the origin handler. Successful 2xx/3xx unsafe responses invalidate the cached target URI generation.
+
+### Request callbacks
+
+Append `when` to decide whether this request may use the cache and `tagsFactory` to add request-derived invalidation groups:
+
+```php
+use Psr\Http\Message\ServerRequestInterface;
+
+#[CacheResponse(
+    ttl: 60,
+    tags: ['catalog'],
+    varyHeaders: ['Accept-Language'],
+    when: static function (ServerRequestInterface $request): bool {
+        return $request->getAttribute('previewMode', false) === false;
+    },
+    tagsFactory: static function (ServerRequestInterface $request): array {
+        $categoryId = $request->getAttribute('categoryId');
+        if (!is_int($categoryId) || $categoryId < 1) {
+            throw new \UnexpectedValueException('A resolved category ID is required.');
+        }
+
+        return ['category:' . $categoryId];
+    },
+)]
+final class PreviewAwareCatalogHandler
+{
+    public function __invoke(): mixed
+    {
+        // Application handler body.
+    }
+}
+```
+
+Resolve trusted application context such as `categoryId` before the cache middleware. Each callback receives only the current `ServerRequestInterface`; the container, handler result, and response are not implicit inputs. The constructor stores callbacks without invoking them. A reusable callback can use `tagsFactory: CacheTags::forCatalog(...)`, including a private static method within its declaring class. Native attribute arguments support `static function` and first-class callables, with no arrow functions or captured variables. The PHP 8.5.13 minimum includes the native trait callable scope/visibility fix.
+
+`when` runs once before key generation and must return a boolean. `false` produces a selected `HttpCachePolicy` with `enabled: false`, bypassing both cache reads and writes and skipping `tagsFactory`. The origin handles the request normally; `only-if-cached` returns 504 without invoking it. A veto cannot fall through to a class attribute or later provider. Configured route policies still take precedence over attributes; an explicit configured policy does not consult the attribute callbacks. Array configuration also accepts a strict boolean `enabled` flag.
+
+`tagsFactory` must return a list of nonblank strings. Static tags come first; all tags are trimmed and deduplicated in first occurrence order. The resolved tags participate in the existing policy fingerprint and generation lookup before both reads and writes. Equivalent request inputs should produce deterministic tag order. Existing target, method, route, Vary, credentials, and namespace partitions remain active.
+
+Callbacks run again on each policy resolution, including cache hits, without invoking the origin on a hit. Unsafe requests keep their origin/invalidation path without evaluating callbacks. A `true` predicate continues through all existing cache safety checks. Resolved policies contain data only; requests, closures, and callback results are not persisted or memoized by route.
+
+Direct `toPolicy()` remains valid for a static attribute. A callback-backed attribute requires `toPolicy($request)`; omitting the request raises `LogicException`. Invalid callback results raise `UnexpectedValueException`. Callback-thrown errors propagate unchanged from policy resolution and never enter the cache-backend fallback path.
 
 ## Authentication and private responses
 
@@ -131,4 +176,4 @@ It reports cache states such as `HIT`, `MISS`, `BYPASS` and `INVALIDATION-FAILED
 
 ## Verification
 
-The repository quality workflow tests PHP 8.4 and 8.5 against both lowest and highest supported dependency sets. It runs strict Composer validation, dependency security audit, PHPStan at level max for `src` and `tests`, and PHPUnit tests.
+The repository quality workflow tests PHP 8.5.13 and the current PHP 8.5 patch against both lowest and highest compatible dependency sets, using the actual development dependencies described in [development integration](docs/development.md). It runs strict Composer validation, dependency security audit, PHPStan at level max for `src` and `tests`, and PHPUnit tests.

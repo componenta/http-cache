@@ -1,0 +1,37 @@
+name: Development dependency revisions
+description: Check out the actual latest compatible Componenta development sources
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: componenta/di
+        ref: ded9a6dc44db2775c4753e73d9581d70caac6043
+        path: .development-dependencies/di
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: componenta/router
+        ref: 8cc184cd44d14857511653e008cfc0a3ee8b0612
+        path: .development-dependencies/router
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: componenta/middleware-factory
+        ref: 8eb058f32c7ba5939ba20095a5156cdee44d997b
+        path: .development-dependencies/middleware-factory
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: componenta/http-responder
+        ref: 6080a95ad9ebed4a659b8025df4ff0edb2d84add
+        path: .development-dependencies/http-responder
+        persist-credentials: false
+    - name: Restore source branch identities and prepare Composer
+      shell: bash
+      run: |
+        git -C .development-dependencies/di switch -C fix/callback-dependency-baseline-2026-11-26
+        git -C .development-dependencies/router switch -C fix/callback-dependency-baseline-2026-11-26
+        git -C .development-dependencies/middleware-factory switch -C fix/callback-dependency-baseline-2026-11-26
+        git -C .development-dependencies/http-responder switch -C fix/callback-dependency-baseline-2026-11-26
+        php .github/scripts/prepare-development.php

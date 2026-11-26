@@ -57,7 +57,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         $onlyIfCached = $this->requestCacheControl($request)->has('only-if-cached');
         $policy = $this->policies->policyFor($request);
 
-        if ($policy === null || !$this->isRequestCacheable($request, $policy)) {
+        if ($policy === null || !$policy->enabled || !$this->isRequestCacheable($request, $policy)) {
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
                 : $handler->handle($request);

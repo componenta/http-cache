@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.4', '8.5']
+        php: ['8.5.13', '8.5']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -24,10 +24,12 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-          tools: composer:2.9.8@sha256:59b2c50e10cafa0d8efc19ede9a326d782f096c674a26baf98cf042ce23de890
+          tools: composer:2.11.2
       - run: composer validate --strict
-      - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: composer audit
+      - name: Prepare compatible development dependencies
+        uses: ./.github/actions/development-dependencies
+      - run: COMPOSER=.composer-development.json composer install --no-interaction --prefer-dist --no-progress
+      - run: COMPOSER=.composer-development.json composer audit
       - run: composer check
 
   publish:

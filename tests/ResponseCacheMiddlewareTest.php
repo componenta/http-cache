@@ -273,7 +273,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
     {
         $policy = new HttpCachePolicy(ttl: 60);
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
-        $store->method('store')->willReturn(false);
+        $store->expects(self::once())->method('store')->willReturn(false);
         $origin = new Response(200, [], 'abcdef');
         $origin->getBody()->seek(2);
 
@@ -291,14 +291,14 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policy = new HttpCachePolicy(ttl: 60);
 
         [$policiesA, $keysA, $storeA, $invalidatorA] = $this->cacheMissDependencies($policy);
-        $storeA->method('store')->willReturn(false);
+        $storeA->expects(self::once())->method('store')->willReturn(false);
         $html = $this->middleware($policiesA, $keysA, $storeA, $invalidatorA)->process(
             new ServerRequest('GET', 'https://example.test/resource'),
             $this->handler(new Response(200, ['Content-Type' => 'text/html'], 'same-body')),
         );
 
         [$policiesB, $keysB, $storeB, $invalidatorB] = $this->cacheMissDependencies($policy);
-        $storeB->method('store')->willReturn(false);
+        $storeB->expects(self::once())->method('store')->willReturn(false);
         $json = $this->middleware($policiesB, $keysB, $storeB, $invalidatorB)->process(
             new ServerRequest('GET', 'https://example.test/resource'),
             $this->handler(new Response(200, ['Content-Type' => 'application/json'], 'same-body')),
@@ -332,6 +332,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
     {
         $policy = new HttpCachePolicy(ttl: 60);
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
         $request = (new ServerRequest('GET', 'https://example.test/articles'))
@@ -513,7 +514,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
         $store = $this->createMock(ResponseCacheStoreInterface::class);
-        $store->expects(self::any())->method('fetch')->willReturn(null);
+        $store->method('fetch')->willReturn(null);
         $invalidator = $this->createStub(CacheInvalidatorInterface::class);
 
         return [$policies, $keys, $store, $invalidator];
