@@ -43,10 +43,20 @@ final class AttributeCachePolicyProviderTest extends TestCase
         $second = $this->requestFor($handler, 'second')->withHeader('X-Category', '20');
         $veto = $second->withAttribute('preview', true);
 
-        self::assertSame(['catalog', 'category:10'], $provider->policyFor($first)?->tags);
-        self::assertSame(['catalog', 'category:20'], $provider->policyFor($second)?->tags);
-        self::assertFalse($provider->policyFor($veto)?->enabled);
-        self::assertSame(['catalog', 'category:10'], $provider->policyFor($first)?->tags);
+        $firstPolicy = $provider->policyFor($first);
+        self::assertNotNull($firstPolicy);
+        self::assertSame(['catalog', 'category:10'], $firstPolicy->tags);
+
+        $secondPolicy = $provider->policyFor($second);
+        self::assertNotNull($secondPolicy);
+        self::assertSame(['catalog', 'category:20'], $secondPolicy->tags);
+
+        $vetoPolicy = $provider->policyFor($veto);
+        self::assertNotNull($vetoPolicy);
+        self::assertFalse($vetoPolicy->enabled);
+
+        $repeatedPolicy = $provider->policyFor($first);
+        self::assertSame(['catalog', 'category:10'], $repeatedPolicy->tags);
     }
 
     public function testReturnsNullForOpaqueServiceIdentifier(): void
