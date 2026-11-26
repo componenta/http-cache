@@ -107,11 +107,16 @@ final class HttpCachePolicyTest extends TestCase
         new HttpCachePolicy(ttl: 60, private: true);
     }
 
-    public function testSetCookieCachingCannotBeEnabled(): void
+    public function testRemovedSetCookieSettingIsRejectedEvenWhenFalse(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-
-        new HttpCachePolicy(ttl: 60, cacheSetCookie: true);
+        foreach (['cache_set_cookie', 'cacheSetCookie'] as $name) {
+            try {
+                HttpCachePolicy::fromArray(['ttl' => 60, $name => false]);
+                self::fail('An unsupported setting must be rejected.');
+            } catch (InvalidArgumentException $exception) {
+                self::assertStringContainsString($name, $exception->getMessage());
+            }
+        }
     }
 
     public function testRejectsWildcardVaryPolicy(): void

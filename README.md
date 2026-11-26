@@ -115,7 +115,7 @@ Private entries are application-managed credential-partitioned memoization, not 
 
 A private policy without credential partitioning is rejected. A request using a private policy but carrying no credentials bypasses the cache.
 
-A credential string is not proof of current authorization. Authenticate and authorize each request before cache use, including token/session expiry and permission checks. Routes whose representation depends on server-side user state, privilege or tenant selection must partition or invalidate on that state; for sensitive content that must never be retained, use `no-store` or disable caching. Responses containing `Set-Cookie` are never stored.
+A credential string is not proof of current authorization. Authenticate and authorize each request before cache use, including token/session expiry and permission checks. Routes whose representation depends on server-side user state, privilege or tenant selection must partition or invalidate on that state; for sensitive content that must never be retained, use `no-store` or disable caching. Responses containing `Set-Cookie` are never stored. The previously unsupported `cacheSetCookie` constructor argument and `cache_set_cookie`/`cacheSetCookie` configuration settings have been removed in 2.0; remove them from declarations and use named arguments when migrating positional constructor calls.
 
 ## Vary
 

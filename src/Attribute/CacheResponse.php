@@ -31,7 +31,6 @@ final readonly class CacheResponse
     private(set) array $tags;
 
     private(set) bool $allowAuthenticated;
-    private(set) bool $cacheSetCookie;
     private(set) bool $private;
     private(set) bool $generateEtag;
 
@@ -50,7 +49,6 @@ final readonly class CacheResponse
         array $varyHeaders = [],
         array $tags = [],
         bool $allowAuthenticated = false,
-        bool $cacheSetCookie = false,
         bool $private = false,
         bool $generateEtag = true,
         private ?Closure $when = null,
@@ -63,7 +61,6 @@ final readonly class CacheResponse
             varyHeaders: $varyHeaders,
             tags: $tags,
             allowAuthenticated: $allowAuthenticated,
-            cacheSetCookie: $cacheSetCookie,
             private: $private,
             generateEtag: $generateEtag,
         );
@@ -75,7 +72,6 @@ final readonly class CacheResponse
         $this->varyHeaders = $policy->varyHeaders;
         $this->tags = $policy->tags;
         $this->allowAuthenticated = $policy->allowAuthenticated;
-        $this->cacheSetCookie = $policy->cacheSetCookie;
         $this->private = $policy->private;
         $this->generateEtag = $policy->generateEtag;
     }
@@ -129,7 +125,6 @@ final readonly class CacheResponse
             varyHeaders: $this->varyHeaders,
             tags: $tags,
             allowAuthenticated: $this->allowAuthenticated,
-            cacheSetCookie: $this->cacheSetCookie,
             private: $this->private,
             generateEtag: $this->generateEtag,
             enabled: $enabled,

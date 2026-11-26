@@ -35,7 +35,6 @@ final readonly class HttpCachePolicy
         array $varyHeaders = [],
         array $tags = [],
         private(set) bool $allowAuthenticated = false,
-        private(set) bool $cacheSetCookie = false,
         private(set) bool $private = false,
         private(set) bool $generateEtag = true,
         private(set) bool $enabled = true,
@@ -50,10 +49,6 @@ final readonly class HttpCachePolicy
 
         if ($private && !$allowAuthenticated) {
             throw new InvalidArgumentException('Private HTTP caching requires credential partitioning.');
-        }
-
-        if ($cacheSetCookie) {
-            throw new InvalidArgumentException('Caching responses with Set-Cookie is not supported safely.');
         }
 
         $this->methods = self::normalizeMethods($methods);
@@ -76,7 +71,6 @@ final readonly class HttpCachePolicy
             varyHeaders: self::stringList($payload, 'vary_headers', []),
             tags: self::stringList($payload, 'tags', []),
             allowAuthenticated: self::boolValue($payload, 'allow_authenticated', false),
-            cacheSetCookie: self::boolValue($payload, 'cache_set_cookie', false),
             private: self::boolValue($payload, 'private', false),
             generateEtag: self::boolValue($payload, 'generate_etag', true),
             enabled: self::boolValue($payload, 'enabled', true),
@@ -92,12 +86,11 @@ final readonly class HttpCachePolicy
         $aliases = [
             'varyHeaders' => 'vary_headers',
             'allowAuthenticated' => 'allow_authenticated',
-            'cacheSetCookie' => 'cache_set_cookie',
             'generateEtag' => 'generate_etag',
         ];
         $allowed = [
             'ttl', 'methods', 'statuses', 'vary_headers', 'tags',
-            'allow_authenticated', 'cache_set_cookie', 'private',
+            'allow_authenticated', 'private',
             'generate_etag', 'enabled',
         ];
         $normalized = [];
