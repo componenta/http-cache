@@ -34,6 +34,31 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         self::assertNotSame($dotted, $underscored);
     }
 
+    public function testEffectiveUriAndExplicitRequestTargetBothPartitionKeys(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $first = (new ServerRequest('GET', 'https://example.test/first?a=1'))->withRequestTarget('/wire');
+        $second = (new ServerRequest('GET', 'https://example.test/second?a=2'))->withRequestTarget('/wire');
+
+        self::assertNotSame($generator->generate($first, $policy), $generator->generate($second, $policy));
+        self::assertNotSame($generator->generate($first, $policy), $generator->generate($first->withRequestTarget('/other'), $policy));
+        self::assertSame(
+            \Componenta\Http\Cache\Key\RequestTarget::cacheTag($first),
+            \Componenta\Http\Cache\Key\RequestTarget::cacheTag($first->withRequestTarget('/other')->withMethod('POST')),
+        );
+    }
+
+    public function testHostHeaderAndCaseSensitiveMethodPartitionKeys(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $request = new ServerRequest('GET', 'https://example.test/items');
+
+        self::assertNotSame($generator->generate($request, $policy), $generator->generate($request->withHeader('Host', 'other.test'), $policy));
+        self::assertNotSame($generator->generate($request, $policy), $generator->generate($request->withMethod('get'), $policy));
+    }
+
     public function testGeneratedKeyIsPortablePsr16Key(): void
     {
         $generator = new DefaultCacheKeyGenerator($this->tags(), 'tenant:with:reserved:characters');

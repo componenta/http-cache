@@ -24,7 +24,7 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
         $tags[] = RequestTarget::cacheTag($request);
         $tags = array_values(array_unique($tags));
         $payload = [
-            'method' => strtoupper($request->getMethod()),
+            'method' => $request->getMethod(),
             'target' => RequestTarget::identity($request),
             'route' => $match === null ? '_unknown' : $match->name,
             'policy' => $this->policyFingerprint($policy),

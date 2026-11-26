@@ -9,7 +9,7 @@ use Psr\Http\Message\ServerRequestInterface;
 final class RequestTarget
 {
     /**
-     * @return array{scheme:string,authority:string,target:string}
+     * @return array{scheme:string,authority:string,path:string,query:string,host:string,target:string}
      */
     public static function identity(ServerRequestInterface $request): array
     {
@@ -28,13 +28,21 @@ final class RequestTarget
         return [
             'scheme' => strtolower($uri->getScheme()),
             'authority' => $authority,
+            'path' => $uri->getPath() === '' ? '/' : $uri->getPath(),
+            'query' => $uri->getQuery(),
+            'host' => $request->getHeaderLine('Host'),
             'target' => $request->getRequestTarget(),
         ];
     }
 
     public static function cacheTag(ServerRequestInterface $request): string
     {
-        return 'uri.' . hash('sha256', json_encode(self::identity($request), JSON_THROW_ON_ERROR));
+        $identity = self::identity($request);
+        // Invalidate every representation of the effective URI, independent of the
+        // wire request target and Host header used to select that representation.
+        unset($identity['target'], $identity['host']);
+
+        return 'uri.' . hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR));
     }
 
     private function __construct() {}
