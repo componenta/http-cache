@@ -49,7 +49,7 @@ final class ResponseEligibility
             return null;
         }
 
-        if (!self::varyIsCompatible($response, $policy)) {
+        if (!self::varyIsCompatible($response->getHeader(Header::VARY), $policy)) {
             return null;
         }
 
@@ -129,9 +129,10 @@ final class ResponseEligibility
         );
     }
 
-    private static function varyIsCompatible(ResponseInterface $response, HttpCachePolicy $policy): bool
+    /** @param array<string> $values */
+    public static function varyIsCompatible(array $values, HttpCachePolicy $policy): bool
     {
-        $vary = ResponseMetadata::varyHeaders($response);
+        $vary = array_map(strtolower(...), HeaderList::split($values));
 
         if (in_array('*', $vary, true)) {
             return false;
@@ -176,9 +177,10 @@ final class ResponseEligibility
         return true;
     }
 
-    /** @param list<string> $values */
+    /** @param array<string> $values */
     public static function matchesContentLength(array $values, int $length): bool
     {
+        $values = array_values($values);
         if ($values === []) {
             return true;
         }

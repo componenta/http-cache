@@ -18,7 +18,8 @@ final class ResponseMetadata
     ): ResponseInterface {
         if (!$response->hasHeader(Header::CACHE_CONTROL)) {
             $response = $response->withHeader(Header::CACHE_CONTROL, $policy->cacheControlValue());
-        } elseif ($policy->private) {
+        }
+        if ($policy->private) {
             $response = self::forcePrivateCacheControl($response);
         }
 

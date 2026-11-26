@@ -263,7 +263,8 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         if ($responseControl->has('no-store') || $responseControl->has('no-cache')
             || $responseControl->has('must-understand') || (!$policy->private && $responseControl->has('private'))
             || isset($headers['set-cookie']) || isset($headers['content-range'])
-            || isset($headers['x-accel-redirect']) || isset($headers['x-sendfile'])) {
+            || isset($headers['x-accel-redirect']) || isset($headers['x-sendfile'])
+            || !ResponseEligibility::varyIsCompatible($headers['vary'] ?? [], $policy)) {
             return false;
         }
         if ($request->getMethod() === HttpMethod::GET

@@ -148,6 +148,30 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertStringContainsString('cookie', strtolower($response->getHeaderLine('Vary')));
     }
 
+    public function testPrivatePolicyRemovesSharedProxyOverridesWithoutOriginCacheControl(): void
+    {
+        $request = (new ServerRequest('GET', 'https://example.test/account'))
+            ->withHeader('Authorization', 'Bearer secret');
+        $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function (string $key, ResponseInterface $response): bool {
+                self::assertFalse($response->hasHeader('X-Accel-Expires'));
+                self::assertFalse($response->hasHeader('CDN-Cache-Control'));
+                self::assertSame('private, max-age=60', $response->getHeaderLine('Cache-Control'));
+                return true;
+            },
+        );
+        $handler = $this->handler(new Response(200, [
+            'X-Accel-Expires' => '600',
+            'CDN-Cache-Control' => 'public, max-age=600',
+        ], 'private'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+        self::assertFalse($response->hasHeader('X-Accel-Expires'));
+        self::assertFalse($response->hasHeader('CDN-Cache-Control'));
+    }
+
     public function testPrivatePolicyWithoutCredentialsBypassesSharedStore(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
