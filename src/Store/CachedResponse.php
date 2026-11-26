@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Store;
 
+use Componenta\Http\Cache\Protocol\CacheControl;
+use Componenta\Http\Cache\Protocol\HeaderList;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -91,19 +93,21 @@ final readonly class CachedResponse
 
         if (
             !is_int($status)
-            || $status < 100
+            || $status < 200
             || $status > 599
+            || in_array($status, [206, 304], true)
             || !is_array($headers)
             || !is_string($body)
             || !is_int($storedAt)
             || $storedAt < 0
             || !is_int($ageAtStore)
             || $ageAtStore < 0
-            || ($freshUntil !== null && (!is_int($freshUntil) || $freshUntil < 0))
+            || ($freshUntil !== null && (!is_int($freshUntil) || $freshUntil <= $storedAt))
         ) {
             return null;
         }
 
+        $normalized = [];
         foreach ($headers as $name => $values) {
             if (
                 !is_string($name)
@@ -114,11 +118,28 @@ final readonly class CachedResponse
                 return null;
             }
 
+            $lowerName = strtolower($name);
+            if (isset($normalized[$lowerName]) || in_array($lowerName, [
+                'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authentication-info',
+                'proxy-authorization', 'proxy-connection', 'te', 'trailer',
+                'transfer-encoding', 'upgrade', 'set-cookie', 'content-range',
+            ], true) || $values === []) {
+                return null;
+            }
+
             foreach ($values as $value) {
-                if (!is_string($value) || str_contains($value, "\r") || str_contains($value, "\n")) {
+                if (!is_string($value) || preg_match('/[\\x00-\\x08\\x0A-\\x1F\\x7F]/', $value) === 1) {
                     return null;
                 }
             }
+            $normalized[$lowerName] = $values;
+        }
+
+        $cacheControl = CacheControl::fromValues($normalized['cache-control'] ?? []);
+        if ($cacheControl->has('no-store') || $cacheControl->has('no-cache')
+            || $cacheControl->has('must-understand')
+            || in_array('*', HeaderList::split($normalized['vary'] ?? []), true)) {
+            return null;
         }
 
         /** @var array<string, list<string>> $headers */

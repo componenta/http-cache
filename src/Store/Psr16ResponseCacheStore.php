@@ -36,7 +36,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         /** @var array<string, mixed> $payload */
         $cached = CachedResponse::fromArray($payload);
 
-        if ($cached === null) {
+        if ($cached === null || $cached->storedAt > time()) {
             return null;
         }
 
@@ -94,7 +94,12 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             freshUntil: $freshUntil,
         );
 
-        return $this->cache->set($key, $cached->toArray(), min($ttl, $remaining));
+        $payload = $cached->toArray();
+        if (CachedResponse::fromArray($payload) === null) {
+            return false;
+        }
+
+        return $this->cache->set($key, $payload, min($ttl, $remaining));
     }
 
     public function delete(string $key): void

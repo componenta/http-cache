@@ -125,6 +125,48 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertNull($store->fetch('key'));
     }
 
+    public function testRejectsSemanticallyInvalidCachedPayloads(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $valid = [
+            'status' => 200,
+            'headers' => [],
+            'body' => 'body',
+            'storedAt' => time(),
+            'ageAtStore' => 0,
+            'freshUntil' => time() + 60,
+        ];
+
+        foreach ([
+            ['status' => 206],
+            ['status' => 304],
+            ['headers' => ['Set-Cookie' => ['session=secret']]],
+            ['headers' => ['Content-Range' => ['bytes 0-1/4']]],
+            ['headers' => ['Cache-Control' => ['no-store']]],
+            ['headers' => ['Cache-Control' => ['no-cache']]],
+            ['headers' => ['Vary' => ['*']]],
+            ['headers' => ['Connection' => ['X-Secret']]],
+            ['headers' => ['X-Test' => ['one'], 'x-test' => ['two']]],
+            ['headers' => ['X-Test' => ["bad\0value"]]],
+            ['storedAt' => time() + 30, 'freshUntil' => time() + 60],
+            ['freshUntil' => 0],
+        ] as $invalid) {
+            $cache->values['key'] = array_replace($valid, $invalid);
+            self::assertNull($store->fetch('key'));
+        }
+    }
+
+    public function testStoreRejectsNoStoreAndWildcardVary(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+
+        self::assertFalse($store->store('key', new Response(200, ['Cache-Control' => 'no-store'], 'body'), 60));
+        self::assertFalse($store->store('key', new Response(200, ['Vary' => '*'], 'body'), 60));
+        self::assertSame([], $cache->values);
+    }
+
     public function testRejectsOversizedCachedPayloadOnRead(): void
     {
         $cache = new ArrayCache();
