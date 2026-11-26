@@ -757,6 +757,65 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testCustomStoreCannotExtendPolicyTtlBeyondStoredLifetime(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1100'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public, max-age=600']],
+            body: 'stale',
+            storedAt: 1000,
+            freshUntil: 1600,
+        ));
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testCustomStoreCannotExtendImplicitFreshnessByIgnoringAge(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1010'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public']],
+            body: 'stale',
+            storedAt: 1000,
+            ageAtStore: 55,
+            freshUntil: 1600,
+        ));
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testExplicitFreshnessMayExceedPolicyTtlInTotalOriginAge(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1010'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public, max-age=600']],
+            body: 'fresh',
+            storedAt: 1000,
+            ageAtStore: 100,
+            freshUntil: 1060,
+        ));
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::never())->method('handle');
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $origin);
+
+        self::assertSame('fresh', (string) $response->getBody());
+        self::assertSame('110', $response->getHeaderLine('Age'));
+    }
+
     public function testMinFreshRejectsEntryWithoutEnoughRemainingFreshness(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
