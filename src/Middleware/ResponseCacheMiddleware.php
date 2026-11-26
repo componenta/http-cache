@@ -270,17 +270,19 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         $now = $this->clock->now()->getTimestamp();
+        if ($cached->storedAt < 0 || $cached->storedAt > $now || $cached->ageAtStore < 0
+            || !CacheableStatus::allows($cached->status)) {
+            return false;
+        }
+
         $remainingFreshness = $cached->remainingFreshness($now);
 
         if ($remainingFreshness === null || $remainingFreshness <= 0) {
             return false;
         }
 
-        if (is_int($maxAge) && $cached->age($now) > $maxAge) {
-            return false;
-        }
-
-        if (is_int($minFresh) && $remainingFreshness < $minFresh) {
+        $age = $cached->age($now);
+        if (is_int($maxAge) && $age > $maxAge) {
             return false;
         }
 
@@ -293,6 +295,28 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             || !ResponseEligibility::varyIsCompatible($headers['vary'] ?? [], $policy)) {
             return false;
         }
+        // Do not trust a backend's deadline alone: a corrupted or custom
+        // store must not extend the origin's explicit freshness directives.
+        $originFreshness = $policy->private ? null : $responseControl->integer('s-maxage');
+        $originFreshness ??= $responseControl->integer('max-age');
+        if ($originFreshness === false) {
+            return false;
+        }
+        if ($originFreshness === null && isset($headers['expires'])) {
+            $expires = HttpDate::parse(implode(', ', $headers['expires']), $now);
+            $date = isset($headers['date']) ? HttpDate::parse(implode(', ', $headers['date']), $now) : null;
+            if ($expires === null || $date === null || $expires <= $date) {
+                return false;
+            }
+            $originFreshness = $expires - $date;
+        }
+        if ($originFreshness !== null) {
+            $remainingFreshness = min($remainingFreshness, $originFreshness - $age);
+        }
+        if ($remainingFreshness <= 0 || (is_int($minFresh) && $remainingFreshness < $minFresh)) {
+            return false;
+        }
+
         if (($request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($cached->status)) && $cached->body !== '') {
             return false;
         }

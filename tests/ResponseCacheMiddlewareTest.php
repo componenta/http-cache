@@ -192,6 +192,20 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testMalformedPrivateOriginCacheControlIsReplacedByNoStore(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(
+            new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true),
+        );
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, ['Cache-Control' => 'extension="unclosed, public'], 'private'));
+        $request = (new ServerRequest('GET', 'https://example.test/account'))->withHeader('Authorization', 'Bearer token');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame('private, no-store', $response->getHeaderLine('Cache-Control'));
+    }
+
     public function testPrivatePolicyWithoutCredentialsBypassesSharedStore(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
@@ -571,6 +585,27 @@ final class ResponseCacheMiddlewareTest extends TestCase
 
         $response = $this->middleware($policies, $keys, $store, $invalidator)
             ->process(new ServerRequest('GET', 'https://example.test/articles'), $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testHitCannotExtendOriginMaxAgeEvenIfStoreDeadlineIsLater(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['public, max-age=10']],
+            body: 'stale',
+            storedAt: 990,
+            ageAtStore: 0,
+            freshUntil: 1050,
+        ));
+        $handler = $this->handler(new Response(200, [], 'origin'));
+
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
 
         self::assertSame('origin', (string) $response->getBody());
     }

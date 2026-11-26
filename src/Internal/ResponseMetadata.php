@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Internal;
 
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
+use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Header;
@@ -75,8 +76,14 @@ final class ResponseMetadata
     private static function forcePrivateCacheControl(ResponseInterface $response): ResponseInterface
     {
         $parts = [];
+        $values = $response->getHeader(Header::CACHE_CONTROL);
+        if (!CacheControl::fromValues($values)->isValid()) {
+            // An invalid origin field cannot be safely rewritten directive by
+            // directive. Keep the outgoing response strictly private.
+            $values = ['no-store'];
+        }
 
-        foreach (HeaderList::split($response->getHeader(Header::CACHE_CONTROL)) as $part) {
+        foreach (HeaderList::split($values) as $part) {
             $name = strtolower(trim(explode('=', $part, 2)[0]));
 
             if (!in_array($name, ['public', 'private', 's-maxage'], true)) {
