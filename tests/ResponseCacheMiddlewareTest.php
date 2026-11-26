@@ -544,6 +544,34 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertNotSame($html->getHeaderLine('ETag'), $json->getHeaderLine('ETag'));
     }
 
+    public function testNoContentResponseWithContentLengthIsNeverStored(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(
+            new HttpCachePolicy(ttl: 60, statuses: [204]),
+        );
+        $store->expects(self::never())->method('store');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/items'),
+            $this->handler(new Response(204, ['Content-Length' => '0'])),
+        );
+
+        self::assertSame(204, $response->getStatusCode());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testHeadResponseWithInvalidLengthSyntaxIsNeverStored(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('HEAD', 'https://example.test/items'),
+            $this->handler(new Response(200, ['Content-Length' => 'invalid'])),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
     public function testHeadResponseWithContentIsNotStored(): void
     {
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));

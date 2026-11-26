@@ -101,6 +101,51 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testRejectsForbiddenOrConflictingContentFramingOnWrite(): void
+    {
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $freshness = CacheFreshness::fromTtl(time(), 60);
+
+        self::assertFalse($store->store('204-length', new Response(204, ['Content-Length' => '0']), $freshness));
+        self::assertFalse($store->store('204-transfer', new Response(204, ['Transfer-Encoding' => 'chunked']), $freshness));
+        self::assertFalse($store->store('205-length', new Response(205, ['Content-Length' => '1']), $freshness));
+        self::assertFalse($store->store('invalid-length', new Response(200, ['Content-Length' => 'invalid']), $freshness));
+        self::assertFalse($store->store('conflicting-framing', new Response(200, ['Content-Length' => '4', 'Transfer-Encoding' => 'chunked'], 'body'), $freshness));
+        self::assertSame([], $cache->values);
+    }
+
+    public function testRejectsForbiddenContentFramingOnRead(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+        $base = [
+            'status' => 204,
+            'headers' => ['Content-Length' => ['0']],
+            'body' => '',
+            'storedAt' => 1000,
+            'ageAtStore' => 0,
+            'freshUntil' => 1060,
+        ];
+        $cache->values['key'] = $base;
+        self::assertNull($store->fetch('key'));
+        $cache->values['key'] = array_replace($base, ['status' => 205, 'headers' => ['Content-Length' => ['10']]]);
+        self::assertNull($store->fetch('key'));
+        $cache->values['key'] = array_replace($base, ['status' => 200, 'headers' => ['Content-Length' => ['-1']]]);
+        self::assertNull($store->fetch('key'));
+    }
+
+    public function testAllowsHeadRepresentationLengthAndEmptyResetContent(): void
+    {
+        $store = new Psr16ResponseCacheStore(new InMemoryCache());
+        $freshness = CacheFreshness::fromTtl(time(), 60);
+        self::assertTrue($store->store('head', new Response(200, ['Content-Length' => '100']), $freshness));
+        self::assertSame(['100'], $store->fetch('head')?->headers['Content-Length']);
+        self::assertTrue($store->store('reset', new Response(205, ['Content-Length' => '0']), $freshness));
+        self::assertSame(205, $store->fetch('reset')?->status);
+    }
+
     public function testDoesNotStoreSetCookieResponse(): void
     {
         $cache = new InMemoryCache();

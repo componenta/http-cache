@@ -7,6 +7,7 @@ namespace Componenta\Http\Cache\Tests;
 use Componenta\Http\Cache\Invalidation\TagVersionStoreInterface;
 use Componenta\Http\Cache\Key\DefaultCacheKeyGenerator;
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
+use Componenta\Http\Cache\Tests\Fixture\CacheRequest;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 
@@ -57,6 +58,17 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
 
         self::assertNotSame($generator->generate($request, $policy), $generator->generate($request->withHeader('Host', 'other.test'), $policy));
         self::assertNotSame($generator->generate($request, $policy), $generator->generate($request->withMethod('get'), $policy));
+    }
+
+    public function testResolvedRouteParametersPartitionIdenticalWireRequests(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $a = CacheRequest::forHandler('catalog.handler', ['tenant' => 'first']);
+        $b = CacheRequest::forHandler('catalog.handler', ['tenant' => 'second']);
+
+        self::assertSame($a->getRequestTarget(), $b->getRequestTarget());
+        self::assertNotSame($generator->generate($a, $policy), $generator->generate($b, $policy));
     }
 
     public function testParsedQueryParametersPartitionIdenticalWireUris(): void

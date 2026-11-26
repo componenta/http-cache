@@ -11,14 +11,15 @@ use Nyholm\Psr7\ServerRequest;
 
 final class CacheRequest
 {
-    public static function forHandler(mixed $handler): ServerRequest
+    /** @param array<string, mixed> $parameters */
+    public static function forHandler(mixed $handler, array $parameters = []): ServerRequest
     {
         $route = RouteRecord::get(name: 'catalog', path: '/catalog', handler: $handler);
         $match = new MatchResult(
             name: $route->name,
             handler: $route->handler,
             middlewares: $route->middlewares,
-            parameters: [],
+            parameters: $parameters,
             rr: $route,
         );
 
