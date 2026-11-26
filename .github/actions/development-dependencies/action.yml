@@ -18,7 +18,7 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: componenta/middleware-factory
-        ref: 0dfebb6dd9d591b790f0815be5e0ddf1d8072fd9
+        ref: 26ceaa1c615f491023842c6cb8ebc41c8f60988e
         path: .development-dependencies/middleware-factory
         persist-credentials: false
     - name: Restore source branch identities and prepare Composer
