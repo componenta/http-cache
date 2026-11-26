@@ -131,8 +131,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             $receipt = (int) $responseTime;
             $freshness = CacheFreshness::fromTtl($receipt, $ttl, $initialAge);
-            $response = ResponseMetadata::prepare($response, $policy, $receipt);
-            $storedResponse = $response;
+            $snapshot = null;
 
             $bodyless = $request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($response->getStatusCode());
             $generateEtag = !$bodyless && $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);
@@ -145,15 +144,22 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 if ($generateEtag) {
                     $response = $response->withHeader(Header::ETAG, ResponseMetadata::weakEtag($response, $contents));
                 }
-                $storedResponse = $response->withBody($this->streamFactory->createStream($contents));
+                $snapshot = $this->streamFactory->createStream($contents);
             }
 
             $now = $this->clock->now()->getTimestamp();
             if ($now < $freshness->receivedAt || $freshness->remainingAt($now) <= 0) {
                 return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
             }
+            // Stage cache-specific metadata without modifying the response that
+            // will be returned when admission or storage fails.
+            $prepared = ResponseMetadata::prepare($response, $policy, $receipt);
+            $storedResponse = $snapshot === null ? $prepared : $prepared->withBody($snapshot);
             $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $freshness->ageAt($now));
             $stored = $this->store->store($key, $storedResponse, $freshness);
+            if ($stored) {
+                $response = $prepared;
+            }
         } catch (Throwable $exception) {
             $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
         } finally {

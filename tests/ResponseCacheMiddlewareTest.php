@@ -438,6 +438,44 @@ final class ResponseCacheMiddlewareTest extends TestCase
 
         self::assertNotSame('', $response->getHeaderLine('ETag'));
         self::assertSame(2, $response->getBody()->tell());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testFailedStorageDoesNotPublishSynthesizedCacheHeaders(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language']);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function (string $key, ResponseInterface $response): bool {
+                self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
+                self::assertSame('accept-language', $response->getHeaderLine('Vary'));
+                return false;
+            },
+        );
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, [], 'body')),
+        );
+        self::assertFalse($response->hasHeader('Cache-Control'));
+        self::assertFalse($response->hasHeader('Vary'));
+        self::assertNotSame('', $response->getHeaderLine('ETag'));
+    }
+
+    public function testFailedPrivateStoragePreservesRestrictionsWithoutSynthesizingMaxAge(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())->method('store')->willReturn(false);
+        $request = (new ServerRequest('GET', 'https://example.test/account'))
+            ->withHeader('Authorization', 'Bearer token');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            $request,
+            $this->handler(new Response(200, [], 'personal')),
+        );
+        self::assertSame('private', $response->getHeaderLine('Cache-Control'));
+        self::assertStringContainsString('authorization', strtolower($response->getHeaderLine('Vary')));
+        self::assertStringContainsString('cookie', strtolower($response->getHeaderLine('Vary')));
     }
 
     public function testGeneratedEtagIncludesRepresentationMetadata(): void
@@ -679,6 +717,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(200, $result->getStatusCode());
         self::assertSame($body, $result->getBody());
         self::assertFalse($result->hasHeader('ETag'));
+        self::assertFalse($result->hasHeader('Cache-Control'));
     }
 
     public function testIncompleteContentLengthIsNotStoredEvenWithOriginEtag(): void
@@ -691,6 +730,8 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
 
         self::assertSame('bad', (string) $result->getBody());
+        self::assertFalse($result->hasHeader('Cache-Control'));
+        self::assertFalse($result->hasHeader('Vary'));
     }
 
     public function testOffloadedResponseIsNotStored(): void
