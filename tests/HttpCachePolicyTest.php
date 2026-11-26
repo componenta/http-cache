@@ -48,6 +48,8 @@ final class HttpCachePolicyTest extends TestCase
         yield 'informational' => [101];
         yield 'partial content' => [206];
         yield 'not modified' => [304];
+        yield 'proxy authentication required' => [407];
+        yield 'upgrade required' => [426];
         yield 'precondition required' => [428];
         yield 'too many requests' => [429];
         yield 'request header fields too large' => [431];

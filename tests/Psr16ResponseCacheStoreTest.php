@@ -101,6 +101,43 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testTransportSpecificStatusesCannotBeStored(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+        $freshness = CacheFreshness::fromTtl(1000, 60);
+
+        self::assertFalse($store->store('proxy', new Response(407, [
+            'Proxy-Authenticate' => 'Basic realm="proxy"',
+            'Cache-Control' => 'public, max-age=60',
+        ]), $freshness));
+        self::assertFalse($store->store('upgrade', new Response(426, [
+            'Connection' => 'Upgrade',
+            'Upgrade' => 'HTTP/3.0',
+            'Cache-Control' => 'public, max-age=60',
+        ]), $freshness));
+        self::assertSame([], $cache->values);
+    }
+
+    public function testTransportSpecificStatusesCannotBeFetched(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+
+        foreach ([407, 426] as $status) {
+            $cache->values['key'] = [
+                'status' => $status,
+                'headers' => ['Cache-Control' => ['public, max-age=60']],
+                'body' => '',
+                'storedAt' => 1000,
+                'freshUntil' => 1060,
+            ];
+            self::assertNull($store->fetch('key'));
+        }
+    }
+
     public function testRejectsForbiddenOrConflictingContentFramingOnWrite(): void
     {
         $cache = new InMemoryCache();
