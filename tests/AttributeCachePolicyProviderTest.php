@@ -35,6 +35,20 @@ final class AttributeCachePolicyProviderTest extends TestCase
         self::assertSame(30, $policy->ttl);
     }
 
+    public function testProviderCanReuseMetadataWithoutReusingRequestDerivedPolicy(): void
+    {
+        $provider = new AttributeCachePolicyProvider();
+        $handler = \Componenta\Http\Cache\Tests\Fixture\CallbackCachedHandler::class;
+        $first = $this->requestFor($handler, 'first')->withHeader('X-Category', '10');
+        $second = $this->requestFor($handler, 'second')->withHeader('X-Category', '20');
+        $veto = $second->withAttribute('preview', true);
+
+        self::assertSame(['catalog', 'category:10'], $provider->policyFor($first)?->tags);
+        self::assertSame(['catalog', 'category:20'], $provider->policyFor($second)?->tags);
+        self::assertFalse($provider->policyFor($veto)?->enabled);
+        self::assertSame(['catalog', 'category:10'], $provider->policyFor($first)?->tags);
+    }
+
     public function testReturnsNullForOpaqueServiceIdentifier(): void
     {
         $request = $this->requestFor('article.handler', 'service.cached');

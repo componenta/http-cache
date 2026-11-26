@@ -14,6 +14,8 @@ use UnexpectedValueException;
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 final readonly class CacheResponse
 {
+    private HttpCachePolicy $staticPolicy;
+
     private(set) int $ttl;
 
     /** @var list<string> */
@@ -66,6 +68,7 @@ final readonly class CacheResponse
             generateEtag: $generateEtag,
         );
 
+        $this->staticPolicy = $policy;
         $this->ttl = $policy->ttl;
         $this->methods = $policy->methods;
         $this->statuses = $policy->statuses;
@@ -79,7 +82,11 @@ final readonly class CacheResponse
 
     public function toPolicy(?ServerRequestInterface $request = null): HttpCachePolicy
     {
-        if ($request === null && ($this->when !== null || $this->tagsFactory !== null)) {
+        if ($this->when === null && $this->tagsFactory === null) {
+            return $this->staticPolicy;
+        }
+
+        if ($request === null) {
             throw new LogicException('Resolving HTTP cache callbacks requires the current request.');
         }
 

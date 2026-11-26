@@ -10,10 +10,16 @@ use Componenta\Http\Router\Middleware\MatchRouteMiddleware;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use ReflectionAttribute;
 use ReflectionClass;
 
-final readonly class AttributeCachePolicyProvider implements CachePolicyProviderInterface
+final class AttributeCachePolicyProvider implements CachePolicyProviderInterface
 {
+    private const int MAX_METADATA_ENTRIES = 256;
+
+    /** @var array<string, ReflectionAttribute<CacheResponse>|null> */
+    private array $declarations = [];
+
     public function policyFor(ServerRequestInterface $request): ?HttpCachePolicy
     {
         $match = MatchRouteMiddleware::getMatchResultFromRequest($request);
@@ -27,7 +33,7 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
 
     private function policyForHandler(mixed $handler, ServerRequestInterface $request): ?HttpCachePolicy
     {
-        if (is_array($handler) && count($handler) === 2 && is_string($handler[1])) {
+        if (is_array($handler) && array_is_list($handler) && count($handler) === 2 && is_string($handler[1])) {
             $target = $handler[0];
 
             if (is_object($target) || (is_string($target) && class_exists($target))) {
@@ -66,17 +72,26 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
             return null;
         }
 
-        $class = new ReflectionClass($target);
+        $className = is_object($target) ? $target::class : $target;
+        $key = strtolower($className . "\0" . ($method ?? ''));
 
-        if ($method !== null && $class->hasMethod($method)) {
-            $policy = $this->policyFromAttributes($class->getMethod($method)->getAttributes(CacheResponse::class), $request);
-
-            if ($policy !== null) {
-                return $policy;
+        if (!array_key_exists($key, $this->declarations)) {
+            $class = new ReflectionClass($className);
+            $declaration = null;
+            if ($method !== null && $class->hasMethod($method)) {
+                $declaration = $class->getMethod($method)->getAttributes(CacheResponse::class)[0] ?? null;
             }
+            $declaration ??= $class->getAttributes(CacheResponse::class)[0] ?? null;
+
+            if (count($this->declarations) >= self::MAX_METADATA_ENTRIES) {
+                array_shift($this->declarations);
+            }
+            $this->declarations[$key] = $declaration;
         }
 
-        return $this->policyFromAttributes($class->getAttributes(CacheResponse::class), $request);
+        // Cache reflection metadata only. Never keep the attribute instance,
+        // request, callback result, or resolved policy in a shared provider.
+        return $this->declarations[$key]?->newInstance()->toPolicy($request);
     }
 
     private function handlerMethod(object|string $handler): ?string
@@ -90,20 +105,5 @@ final readonly class AttributeCachePolicyProvider implements CachePolicyProvider
         }
 
         return method_exists($handler, '__invoke') ? '__invoke' : null;
-    }
-
-    /**
-     * @param list<\ReflectionAttribute<CacheResponse>> $attributes
-     */
-    private function policyFromAttributes(array $attributes, ServerRequestInterface $request): ?HttpCachePolicy
-    {
-        if ($attributes === []) {
-            return null;
-        }
-
-        /** @var CacheResponse $attribute */
-        $attribute = $attributes[0]->newInstance();
-
-        return $attribute->toPolicy($request);
     }
 }
