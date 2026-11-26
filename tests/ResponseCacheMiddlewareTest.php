@@ -1424,6 +1424,37 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('Cache-Control'));
     }
 
+    public function testUnknownSizeResponseWithinBudgetCanBeStoredWithoutGeneratedEtag(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($backend, maxEntryBytes: 100, clock: $clock);
+        $policy = new HttpCachePolicy(ttl: 60, generateEtag: false);
+        $body = $this->createStub(\Psr\Http\Message\StreamInterface::class);
+        $body->method('getSize')->willReturn(null);
+        $body->method('isReadable')->willReturn(true);
+        $body->method('isSeekable')->willReturn(true);
+        $body->method('tell')->willReturn(0);
+        $body->method('eof')->willReturn(true);
+        $body->method('read')->willReturn('body');
+        $response = $this->middleware(
+            $this->policyProvider($policy),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            maxEntryBytes: 100,
+            clock: $clock,
+        )->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler((new Response(200))->withBody($body)),
+        );
+
+        self::assertSame($body, $response->getBody());
+        self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
+        self::assertFalse($response->hasHeader('ETag'));
+        self::assertSame('body', $store->fetch('cache-key')?->body);
+    }
+
     public function testDiscardedConnectionFieldsDoNotConsumeStoredEntryBudget(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
