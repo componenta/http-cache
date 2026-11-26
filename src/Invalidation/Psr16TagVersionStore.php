@@ -21,9 +21,24 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
     public function versions(array $tags): array
     {
         $versions = [];
+        $keys = [];
+        foreach (array_unique($tags) as $tag) {
+            $keys[$this->key($tag)] = $tag;
+        }
 
-        foreach ($tags as $tag) {
-            $versions[$tag] = $this->version($tag);
+        if ($keys === []) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($this->cache->getMultiple(array_keys($keys)) as $key => $value) {
+            if (is_string($key) && isset($keys[$key])) {
+                $values[$key] = $value;
+            }
+        }
+
+        foreach ($keys as $key => $tag) {
+            $versions[$tag] = $this->resolveVersion($key, $values[$key] ?? null);
         }
 
         ksort($versions);
@@ -44,8 +59,12 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
     private function version(string $tag): int
     {
         $key = $this->key($tag);
-        $version = $this->cache->get($key);
 
+        return $this->resolveVersion($key, $this->cache->get($key));
+    }
+
+    private function resolveVersion(string $key, mixed $version): int
+    {
         if (is_int($version) && $version > 0) {
             return $version;
         }
