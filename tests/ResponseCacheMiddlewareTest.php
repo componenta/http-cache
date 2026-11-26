@@ -448,6 +448,56 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertNotSame($html->getHeaderLine('ETag'), $json->getHeaderLine('ETag'));
     }
 
+    public function testHeadResponseWithContentIsNotStored(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [], 'unexpected content'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('HEAD', 'https://example.test/items'), $handler);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertFalse($response->hasHeader('ETag'));
+    }
+
+    public function testConditionalResponseDoesNotInheritFactoryDefaults(): void
+    {
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['ETag' => ['"abc"']],
+            body: 'body',
+            storedAt: time(),
+            freshUntil: time() + 60,
+        ));
+        $factory = $this->createStub(\Psr\Http\Message\ResponseFactoryInterface::class);
+        $factory->method('createResponse')->willReturn(new Response(304, [
+            'Set-Cookie' => 'session=unexpected',
+            'Content-Length' => '9',
+            'Content-Type' => 'text/html',
+        ], 'unwanted!'));
+        $middleware = new ResponseCacheMiddleware(
+            policies: $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            keys: $this->keyGenerator(),
+            store: $store,
+            invalidator: $this->createStub(CacheInvalidatorInterface::class),
+            responseFactory: $factory,
+            streamFactory: new Psr17Factory(),
+        );
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::never())->method('handle');
+        $request = (new ServerRequest('GET', 'https://example.test/items'))->withHeader('If-None-Match', '"abc"');
+
+        $response = $middleware->process($request, $origin);
+        self::assertSame(304, $response->getStatusCode());
+        self::assertSame('', (string) $response->getBody());
+        self::assertFalse($response->hasHeader('Content-Length'));
+        self::assertFalse($response->hasHeader('Content-Type'));
+        self::assertFalse($response->hasHeader('Set-Cookie'));
+        self::assertSame('"abc"', $response->getHeaderLine('ETag'));
+    }
+
     public function testHeadResponseDoesNotGetBodyDerivedEtag(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

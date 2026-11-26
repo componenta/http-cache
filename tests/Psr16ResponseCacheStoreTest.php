@@ -23,6 +23,26 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $store->delete('key');
     }
 
+    public function testCachedResponseReconstructionDoesNotInheritUnstoredFactoryHeaders(): void
+    {
+        $cached = new \Componenta\Http\Cache\Store\CachedResponse(
+            status: 200,
+            headers: ['Content-Type' => ['text/plain']],
+            body: 'body',
+            storedAt: time(),
+        );
+        $factory = $this->createStub(\Psr\Http\Message\ResponseFactoryInterface::class);
+        $factory->method('createResponse')->willReturn(new Response(200, [
+            'Set-Cookie' => 'session=unexpected',
+            'Content-Length' => '500',
+            'X-Default' => 'not cached',
+        ]));
+        $response = $cached->toResponse($factory, new \Nyholm\Psr7\Factory\Psr17Factory());
+
+        self::assertSame(['Content-Type' => ['text/plain']], $response->getHeaders());
+        self::assertSame('body', (string) $response->getBody());
+    }
+
     public function testRejectsBodyLargerThanConfiguredLimit(): void
     {
         $cache = new InMemoryCache();

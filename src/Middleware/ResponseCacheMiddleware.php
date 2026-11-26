@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Middleware;
 
 use Componenta\Http\Cache\Internal\BodySnapshot;
+use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\ConditionalRequest;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\ResponseMetadata;
@@ -132,11 +133,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $response = ResponseMetadata::prepare($response, $policy, $receipt);
             $storedResponse = $response;
 
-            $generateEtag = $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);
+            $bodyless = $request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($response->getStatusCode());
+            $generateEtag = !$bodyless && $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);
             $validateLength = $request->getMethod() === HttpMethod::GET && $response->hasHeader(Header::CONTENT_LENGTH);
-            if ($generateEtag || $validateLength) {
-                $contents = BodySnapshot::read($response->getBody(), $this->maxEntryBytes);
-                if ($contents === null || ($validateLength && !ResponseEligibility::matchesContentLength($response->getHeader(Header::CONTENT_LENGTH), strlen($contents)))) {
+            if ($bodyless || $generateEtag || $validateLength) {
+                $contents = BodySnapshot::read($response->getBody(), $bodyless ? 0 : $this->maxEntryBytes);
+                if ($contents === null || ($bodyless && $contents !== '') || ($validateLength && !ResponseEligibility::matchesContentLength($response->getHeader(Header::CONTENT_LENGTH), strlen($contents)))) {
                     return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
                 }
                 if ($generateEtag) {
@@ -204,6 +206,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     private function notModifiedResponse(CachedResponse $cached): ResponseInterface
     {
         $response = $this->responseFactory->createResponse(304);
+        foreach ($response->getHeaders() as $name => $_) {
+            $response = $response->withoutHeader((string) $name);
+        }
+        if ($response->getBody()->getSize() !== 0) {
+            $response = $response->withBody($this->streamFactory->createStream(''));
+        }
         $headers = array_change_key_case($cached->headers, CASE_LOWER);
 
         foreach ([
@@ -285,6 +293,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             || isset($headers['set-cookie']) || isset($headers['content-range'])
             || isset($headers['x-accel-redirect']) || isset($headers['x-sendfile'])
             || !ResponseEligibility::varyIsCompatible($headers['vary'] ?? [], $policy)) {
+            return false;
+        }
+        if (($request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($cached->status)) && $cached->body !== '') {
             return false;
         }
         if ($request->getMethod() === HttpMethod::GET

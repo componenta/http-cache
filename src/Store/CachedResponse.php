@@ -50,6 +50,11 @@ final readonly class CachedResponse
         StreamFactoryInterface $streamFactory,
     ): ResponseInterface {
         $response = $responseFactory->createResponse($this->status);
+        // A factory may have application defaults. A cache hit must reconstruct
+        // the saved representation rather than merge unrelated default fields.
+        foreach ($response->getHeaders() as $name => $_) {
+            $response = $response->withoutHeader((string) $name);
+        }
 
         foreach ($this->headers as $name => $values) {
             $response = $response->withHeader($name, $values);
