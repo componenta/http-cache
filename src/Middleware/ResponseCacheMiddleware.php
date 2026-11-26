@@ -320,6 +320,13 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
+        // The policy bounds the local retention interval, even if a custom
+        // store supplies an excessively distant deadline.
+        $remainingFreshness = min($remainingFreshness, $policy->ttl - ($now - $cached->storedAt));
+        if ($remainingFreshness <= 0) {
+            return false;
+        }
+
         $age = $cached->age($now);
         if (is_int($maxAge) && $age > $maxAge) {
             return false;
@@ -350,9 +357,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
             $originFreshness = $expires - $date;
         }
-        if ($originFreshness !== null) {
-            $remainingFreshness = min($remainingFreshness, $originFreshness - $age);
-        }
+        // Without an explicit freshness lifetime, admission uses the policy
+        // TTL minus the representation's total age, not just its local age.
+        $remainingFreshness = min($remainingFreshness, ($originFreshness ?? $policy->ttl) - $age);
         if ($remainingFreshness <= 0 || (is_int($minFresh) && $remainingFreshness < $minFresh)) {
             return false;
         }
