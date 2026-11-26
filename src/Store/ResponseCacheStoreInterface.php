@@ -10,7 +10,12 @@ interface ResponseCacheStoreInterface
 {
     public function fetch(string $key): ?CachedResponse;
 
-    public function store(string $key, ResponseInterface $response, int $ttl): bool;
+    /**
+     * Retain the response only within the supplied absolute freshness budget.
+     * Return false when the response cannot be stored or has expired.
+     */
+    public function store(string $key, ResponseInterface $response, CacheFreshness $freshness): bool;
 
+    /** Remove the entry, throwing if the backend cannot complete the operation. */
     public function delete(string $key): void;
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Tests;
 
+use Componenta\Http\Cache\Store\CacheFreshness;
 use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
 use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
 use Componenta\Http\Cache\Tests\Fixture\MutableClock;
@@ -48,7 +49,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 4);
 
-        self::assertFalse($store->store('key', new Response(200, [], '12345'), 60));
+        self::assertFalse($store->store('key', new Response(200, [], '12345'), CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
     }
 
@@ -59,7 +60,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $response = new Response(200, [], 'abcdef');
         $response->getBody()->seek(3);
 
-        self::assertTrue($store->store('key', $response, 60));
+        self::assertTrue($store->store('key', $response, CacheFreshness::fromTtl(time(), 60)));
         self::assertSame(3, $response->getBody()->tell());
 
         $cached = $store->fetch('key');
@@ -80,7 +81,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $body->method('read')->willReturnOnConsecutiveCalls('partial', '');
         $body->expects(self::once())->method('seek')->with(2);
 
-        self::assertFalse($store->store('key', (new Response(200))->withBody($body), 60));
+        self::assertFalse($store->store('key', (new Response(200))->withBody($body), CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
     }
 
@@ -89,14 +90,14 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
-        self::assertFalse($store->store('informational', new Response(101), 60));
-        self::assertFalse($store->store('partial', new Response(206), 60));
-        self::assertFalse($store->store('not-modified', new Response(304), 60));
+        self::assertFalse($store->store('informational', new Response(101), CacheFreshness::fromTtl(time(), 60)));
+        self::assertFalse($store->store('partial', new Response(206), CacheFreshness::fromTtl(time(), 60)));
+        self::assertFalse($store->store('not-modified', new Response(304), CacheFreshness::fromTtl(time(), 60)));
         foreach ([428, 429, 431, 511] as $status) {
-            self::assertFalse($store->store('forbidden', new Response($status, ['Cache-Control' => 'public, max-age=60']), 60));
+            self::assertFalse($store->store('forbidden', new Response($status, ['Cache-Control' => 'public, max-age=60']), CacheFreshness::fromTtl(time(), 60)));
         }
-        self::assertFalse($store->store('invalid-204', new Response(204, [], 'body'), 60));
-        self::assertFalse($store->store('invalid-205', new Response(205, [], 'body'), 60));
+        self::assertFalse($store->store('invalid-204', new Response(204, [], 'body'), CacheFreshness::fromTtl(time(), 60)));
+        self::assertFalse($store->store('invalid-205', new Response(205, [], 'body'), CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
     }
 
@@ -105,7 +106,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
-        self::assertFalse($store->store('key', new Response(200, ['Set-Cookie' => 'session=abc'], 'body'), 60));
+        self::assertFalse($store->store('key', new Response(200, ['Set-Cookie' => 'session=abc'], 'body'), CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
     }
 
@@ -121,7 +122,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
             'X-End-To-End' => 'kept',
         ], 'body');
 
-        self::assertTrue($store->store('key', $response, 60));
+        self::assertTrue($store->store('key', $response, CacheFreshness::fromTtl(time(), 60)));
 
         $cached = $store->fetch('key');
         self::assertNotNull($cached);
@@ -138,7 +139,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $store = new Psr16ResponseCacheStore($cache);
         $response = new Response(200, ['Connection' => 'Vary', 'Vary' => 'Accept-Language'], 'body');
 
-        self::assertFalse($store->store('key', $response, 60));
+        self::assertFalse($store->store('key', $response, CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
     }
 
@@ -148,7 +149,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $store = new Psr16ResponseCacheStore($cache);
         $response = new Response(200, ['Age' => '120'], 'body');
 
-        self::assertTrue($store->store('key', $response, 60));
+        self::assertTrue($store->store('key', $response, CacheFreshness::fromTtl(time(), 60, 120)));
 
         $cached = $store->fetch('key');
         self::assertNotNull($cached);
@@ -215,8 +216,8 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
-        self::assertFalse($store->store('key', new Response(200, ['Cache-Control' => 'no-store'], 'body'), 60));
-        self::assertFalse($store->store('key', new Response(200, ['Vary' => '*'], 'body'), 60));
+        self::assertFalse($store->store('key', new Response(200, ['Cache-Control' => 'no-store'], 'body'), CacheFreshness::fromTtl(time(), 60)));
+        self::assertFalse($store->store('key', new Response(200, ['Vary' => '*'], 'body'), CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
     }
 
@@ -266,8 +267,25 @@ final class Psr16ResponseCacheStoreTest extends TestCase
             return 'body';
         });
 
-        self::assertFalse($store->store('expired', (new Response(200))->withBody($body), 1));
+        self::assertFalse($store->store('expired', (new Response(200))->withBody($body), CacheFreshness::fromTtl(100, 1)));
         self::assertNull($store->fetch('expired'));
+    }
+
+    public function testDelayBeforeStoreDoesNotRestartFreshnessOrAge(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@105'));
+        $store = new Psr16ResponseCacheStore(new InMemoryCache(), clock: $clock);
+        $freshness = CacheFreshness::fromTtl(100, 10, 120);
+
+        self::assertTrue($store->store('key', new Response(200, [], 'body'), $freshness));
+        $cached = $store->fetch('key');
+        self::assertNotNull($cached);
+        self::assertSame(110, $cached->freshUntil);
+        self::assertSame(125, $cached->age(105));
+        self::assertSame(5, $cached->remainingFreshness(105));
+
+        $clock->advance(5);
+        self::assertFalse($store->store('expired', new Response(200, [], 'body'), $freshness));
     }
 
     public function testPersistsFreshnessDeadlineFromStorageTtl(): void
@@ -275,7 +293,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
-        self::assertTrue($store->store('key', new Response(200, [], 'body'), 60));
+        self::assertTrue($store->store('key', new Response(200, [], 'body'), CacheFreshness::fromTtl(time(), 60)));
 
         $cached = $store->fetch('key');
         self::assertNotNull($cached);

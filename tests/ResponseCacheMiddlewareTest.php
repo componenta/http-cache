@@ -11,6 +11,7 @@ use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
 use Componenta\Http\Cache\Policy\CachePolicyProviderInterface;
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Cache\Protocol\HttpDate;
+use Componenta\Http\Cache\Store\CacheFreshness;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Componenta\Http\Cache\Tests\Fixture\MutableClock;
@@ -110,10 +111,10 @@ final class ResponseCacheMiddlewareTest extends TestCase
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
         $store->expects(self::once())
             ->method('store')
-            ->willReturnCallback(static function (string $key, ResponseInterface $response, int $ttl): bool {
+            ->willReturnCallback(static function (string $key, ResponseInterface $response, CacheFreshness $freshness): bool {
                 self::assertSame('cache-key', $key);
-                self::assertGreaterThan(0, $ttl);
-                self::assertLessThanOrEqual(60, $ttl);
+                self::assertGreaterThan(0, $freshness->remainingAt(time()));
+                self::assertLessThanOrEqual(60, $freshness->remainingAt(time()));
                 self::assertStringContainsString('private', strtolower($response->getHeaderLine('Cache-Control')));
                 self::assertStringNotContainsString('public', strtolower($response->getHeaderLine('Cache-Control')));
                 $vary = strtolower($response->getHeaderLine('Vary'));
@@ -289,10 +290,10 @@ final class ResponseCacheMiddlewareTest extends TestCase
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
         $store->expects(self::once())
             ->method('store')
-            ->willReturnCallback(static function (string $key, ResponseInterface $response, int $ttl): bool {
+            ->willReturnCallback(static function (string $key, ResponseInterface $response, CacheFreshness $freshness): bool {
                 self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
-                self::assertGreaterThan(0, $ttl);
-                self::assertLessThanOrEqual(60, $ttl);
+                self::assertGreaterThan(0, $freshness->remainingAt(time()));
+                self::assertLessThanOrEqual(60, $freshness->remainingAt(time()));
 
                 return true;
             });
@@ -673,9 +674,9 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
         $store->expects(self::once())->method('store')->willReturnCallback(
-            static function (string $key, ResponseInterface $response, int $ttl): bool {
+            static function (string $key, ResponseInterface $response, CacheFreshness $freshness): bool {
                 self::assertSame('public, max-age=5', $response->getHeaderLine('Cache-Control'));
-                self::assertSame(5, $ttl);
+                self::assertSame(1005, $freshness->freshUntil);
                 return true;
             },
         );
@@ -695,9 +696,9 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
         $store->expects(self::once())->method('store')->willReturnCallback(
-            static function (string $key, ResponseInterface $response, int $ttl): bool {
+            static function (string $key, ResponseInterface $response, CacheFreshness $freshness): bool {
                 self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
-                self::assertSame(20, $ttl);
+                self::assertSame(1020, $freshness->freshUntil);
                 return true;
             },
         );

@@ -9,7 +9,6 @@ use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Protocol\HeaderList;
-use Componenta\Http\Cache\Protocol\ResponseAge;
 use Componenta\Http\Header;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
@@ -53,21 +52,20 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         return $cached;
     }
 
-    public function store(string $key, ResponseInterface $response, int $ttl): bool
+    public function store(string $key, ResponseInterface $response, CacheFreshness $freshness): bool
     {
-        $receivedAt = $this->clock->now()->getTimestamp();
+        $now = $this->clock->now()->getTimestamp();
         $status = $response->getStatusCode();
 
         if (
-            $ttl <= 0
+            $now < $freshness->receivedAt
+            || $freshness->remainingAt($now) <= 0
             || !CacheableStatus::allows($status)
             || !ResponseEligibility::hasSafeStorageMetadata($response)
         ) {
             return false;
         }
 
-        $freshUntil = $ttl > PHP_INT_MAX - $receivedAt ? PHP_INT_MAX : $receivedAt + $ttl;
-        $initialAge = ResponseAge::atReceipt($response, (float) $receivedAt);
         $headers = $this->storableHeaders($response);
         $headerBytes = $this->headerBytes($headers);
 
@@ -82,20 +80,18 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         }
 
         $storedAt = $this->clock->now()->getTimestamp();
-        $remaining = $freshUntil - $storedAt;
-        if ($remaining <= 0) {
+        $remaining = $freshness->remainingAt($storedAt);
+        if ($storedAt < $freshness->receivedAt || $remaining <= 0) {
             return false;
         }
-        $elapsed = max(0, $storedAt - $receivedAt);
-        $ageAtStore = $initialAge > PHP_INT_MAX - $elapsed ? PHP_INT_MAX : $initialAge + $elapsed;
 
         $cached = new CachedResponse(
             status: $response->getStatusCode(),
             headers: $headers,
             body: $contents,
             storedAt: $storedAt,
-            ageAtStore: $ageAtStore,
-            freshUntil: $freshUntil,
+            ageAtStore: $freshness->ageAt($storedAt),
+            freshUntil: $freshness->freshUntil,
         );
 
         $payload = $cached->toArray();
@@ -103,7 +99,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
-        return $this->cache->set($key, $payload, min($ttl, $remaining));
+        return $this->cache->set($key, $payload, $remaining);
     }
 
     public function delete(string $key): void

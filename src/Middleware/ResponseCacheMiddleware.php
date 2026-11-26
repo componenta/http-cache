@@ -19,6 +19,7 @@ use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Protocol\ResponseAge;
+use Componenta\Http\Cache\Store\CacheFreshness;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Componenta\Http\Header;
@@ -129,7 +130,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
 
             $receipt = (int) $responseTime;
-            $deadline = $ttl > PHP_INT_MAX - $receipt ? PHP_INT_MAX : $receipt + $ttl;
+            $freshness = CacheFreshness::fromTtl($receipt, $ttl, $initialAge);
             $response = ResponseMetadata::prepare($response, $policy, $receipt);
             $storedResponse = $response;
 
@@ -148,14 +149,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
 
             $now = $this->clock->now()->getTimestamp();
-            $remaining = $deadline - $now;
-            if ($remaining <= 0) {
+            if ($now < $freshness->receivedAt || $freshness->remainingAt($now) <= 0) {
                 return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
             }
-            $elapsed = max(0, $now - $receipt);
-            $age = $initialAge > PHP_INT_MAX - $elapsed ? PHP_INT_MAX : $initialAge + $elapsed;
-            $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $age);
-            $stored = $this->store->store($key, $storedResponse, min($ttl, $remaining));
+            $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $freshness->ageAt($now));
+            $stored = $this->store->store($key, $storedResponse, $freshness);
         } catch (Throwable $exception) {
             $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
         } finally {

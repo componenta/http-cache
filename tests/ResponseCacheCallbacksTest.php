@@ -11,6 +11,7 @@ use Componenta\Http\Cache\Key\DefaultCacheKeyGenerator;
 use Componenta\Http\Cache\Key\RequestTarget;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
 use Componenta\Http\Cache\Policy\AttributeCachePolicyProvider;
+use Componenta\Http\Cache\Store\CacheFreshness;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Componenta\Http\Cache\Tests\Fixture\CacheRequest;
@@ -261,19 +262,24 @@ final class CallbackResponseStore implements ResponseCacheStoreInterface
         return $this->entries[$key] ?? null;
     }
 
-    public function store(string $key, ResponseInterface $response, int $ttl): bool
+    public function store(string $key, ResponseInterface $response, CacheFreshness $freshness): bool
     {
         ++$this->writes;
         $headers = [];
         foreach ($response->getHeaders() as $name => $values) {
             $headers[(string) $name] = array_values($values);
         }
+        $storedAt = time();
+        if ($freshness->remainingAt($storedAt) <= 0) {
+            return false;
+        }
         $this->entries[$key] = new CachedResponse(
             status: $response->getStatusCode(),
             headers: $headers,
             body: (string) $response->getBody(),
-            storedAt: time(),
-            freshUntil: time() + $ttl,
+            storedAt: $storedAt,
+            ageAtStore: $freshness->ageAt($storedAt),
+            freshUntil: $freshness->freshUntil,
         );
 
         return true;
