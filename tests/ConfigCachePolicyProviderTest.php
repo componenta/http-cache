@@ -41,6 +41,15 @@ final class ConfigCachePolicyProviderTest extends TestCase
         self::assertSame('public, max-age=60', $policy->cacheControlValue());
     }
 
+    public function testInvalidUnmatchedRoutePolicyFailsAtConstruction(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new ConfigCachePolicyProvider([
+            'valid' => ['ttl' => 60],
+            'invalid' => ['ttl' => 60, 'enable' => false],
+        ]);
+    }
+
     public function testReturnsNullWithoutRouteMatch(): void
     {
         $provider = new ConfigCachePolicyProvider([

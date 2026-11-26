@@ -8,13 +8,10 @@ use Componenta\Http\Router\Middleware\MatchRouteMiddleware;
 use InvalidArgumentException;
 use Psr\Http\Message\ServerRequestInterface;
 
-final class ConfigCachePolicyProvider implements CachePolicyProviderInterface
+final readonly class ConfigCachePolicyProvider implements CachePolicyProviderInterface
 {
-    /** @var array<string, HttpCachePolicy|array<string, mixed>> */
-    private readonly array $policies;
-
     /** @var array<string, HttpCachePolicy> */
-    private array $resolved = [];
+    private array $policies;
 
     /**
      * @param array<array-key, mixed> $policies
@@ -42,7 +39,7 @@ final class ConfigCachePolicyProvider implements CachePolicyProviderInterface
             }
 
             /** @var array<string, mixed> $policy */
-            $normalized[$routeName] = $policy;
+            $normalized[$routeName] = HttpCachePolicy::fromArray($policy);
         }
 
         $this->policies = $normalized;
@@ -52,21 +49,7 @@ final class ConfigCachePolicyProvider implements CachePolicyProviderInterface
     {
         $match = MatchRouteMiddleware::getMatchResultFromRequest($request);
 
-        if ($match === null || !array_key_exists($match->name, $this->policies)) {
-            return null;
-        }
-
-        return $this->resolved[$match->name] ??= $this->resolvePolicy($this->policies[$match->name]);
-    }
-
-    /**
-     * @param HttpCachePolicy|array<string, mixed> $policy
-     */
-    private function resolvePolicy(HttpCachePolicy|array $policy): HttpCachePolicy
-    {
-        return $policy instanceof HttpCachePolicy
-            ? $policy
-            : HttpCachePolicy::fromArray($policy);
+        return $match === null ? null : ($this->policies[$match->name] ?? null);
     }
 
     /**

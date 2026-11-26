@@ -54,6 +54,35 @@ final class HttpCachePolicyTest extends TestCase
         yield 'network authentication required' => [511];
     }
 
+    public function testUnknownConfigurationSettingCannotSilentlyEnableCaching(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        HttpCachePolicy::fromArray(['ttl' => 60, 'enable' => false]);
+    }
+
+    public function testConflictingConfigurationAliasesAreRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        HttpCachePolicy::fromArray(['ttl' => 60, 'generateEtag' => false, 'generate_etag' => true]);
+    }
+
+    public function testEquivalentConfigurationAliasesRemainSupported(): void
+    {
+        $policy = HttpCachePolicy::fromArray([
+            'ttl' => 60,
+            'varyHeaders' => ['Accept-Language'],
+            'vary_headers' => ['Accept-Language'],
+            'private' => true,
+            'allowAuthenticated' => true,
+            'generate_etag' => false,
+        ]);
+
+        self::assertSame(['accept-language'], $policy->varyHeaders);
+        self::assertTrue($policy->allowAuthenticated);
+        self::assertTrue($policy->private);
+        self::assertFalse($policy->generateEtag);
+    }
+
     public function testWireMethodsAreCaseSensitive(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

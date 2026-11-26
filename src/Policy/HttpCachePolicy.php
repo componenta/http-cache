@@ -67,18 +67,52 @@ final readonly class HttpCachePolicy
      */
     public static function fromArray(array $payload): self
     {
+        $payload = self::normalizeConfiguration($payload);
+
         return new self(
             ttl: self::intValue($payload, 'ttl'),
             methods: self::stringList($payload, 'methods', ['GET', 'HEAD']),
             statuses: self::intList($payload, 'statuses', [200]),
-            varyHeaders: self::stringList($payload, 'vary_headers', self::stringList($payload, 'varyHeaders', [])),
+            varyHeaders: self::stringList($payload, 'vary_headers', []),
             tags: self::stringList($payload, 'tags', []),
-            allowAuthenticated: self::boolValue($payload, 'allow_authenticated', self::boolValue($payload, 'allowAuthenticated', false)),
-            cacheSetCookie: self::boolValue($payload, 'cache_set_cookie', self::boolValue($payload, 'cacheSetCookie', false)),
+            allowAuthenticated: self::boolValue($payload, 'allow_authenticated', false),
+            cacheSetCookie: self::boolValue($payload, 'cache_set_cookie', false),
             private: self::boolValue($payload, 'private', false),
-            generateEtag: self::boolValue($payload, 'generate_etag', self::boolValue($payload, 'generateEtag', true)),
+            generateEtag: self::boolValue($payload, 'generate_etag', true),
             enabled: self::boolValue($payload, 'enabled', true),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private static function normalizeConfiguration(array $payload): array
+    {
+        $aliases = [
+            'varyHeaders' => 'vary_headers',
+            'allowAuthenticated' => 'allow_authenticated',
+            'cacheSetCookie' => 'cache_set_cookie',
+            'generateEtag' => 'generate_etag',
+        ];
+        $allowed = [
+            'ttl', 'methods', 'statuses', 'vary_headers', 'tags',
+            'allow_authenticated', 'cache_set_cookie', 'private',
+            'generate_etag', 'enabled',
+        ];
+        $normalized = [];
+        foreach ($payload as $name => $value) {
+            $key = $aliases[$name] ?? $name;
+            if (!in_array($key, $allowed, true)) {
+                throw new InvalidArgumentException(sprintf('Unknown HTTP cache policy setting "%s".', $name));
+            }
+            if (array_key_exists($key, $normalized) && $normalized[$key] !== $value) {
+                throw new InvalidArgumentException(sprintf('Conflicting HTTP cache policy settings for "%s".', $key));
+            }
+            $normalized[$key] = $value;
+        }
+
+        return $normalized;
     }
 
     public function allowsMethod(string $method): bool
