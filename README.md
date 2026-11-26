@@ -8,25 +8,27 @@ The cache is conservative by design: it caches only explicitly configured GET/HE
 
 - PHP 8.5.13+
 - Componenta Config 4
-- Componenta Router 3
+- Componenta Router 3.1+
 - Componenta HTTP 1
 - PSR-7 / PSR-17 factories
 - PSR-16 cache implementation
+- Optional application-provided PSR-20 `ClockInterface` (UTC system clock by default)
 
 For the development branch and its unreleased dependency revisions, see [development integration](docs/development.md).
 
 ## Middleware order
 
-Route matching must happen before the response cache so the cache can resolve the route policy. The cache must wrap route dispatch so it can observe the generated response.
+Route matching must happen before the response cache so the cache can resolve the route policy. The cache must wrap route dispatch so it can observe the generated response. Authorization, session/token revocation checks, access-control middleware, security-sensitive rate limits, and any other guards that must run on every request must execute **before** the cache. Do not put them only inside route dispatch: a hit deliberately skips dispatch. If a route cannot meet this requirement, disable caching for it.
 
 A typical order is:
 
 1. trusted proxy normalization, when applicable
 2. route matching
-3. response cache
-4. route dispatch
+3. resolve trusted tenant/locale context, authenticate and authorize the current request
+4. response cache
+5. route dispatch
 
-When the application is behind a reverse proxy, normalize the PSR-7 request URI with the trusted-proxy middleware before this cache. Do not build the effective URI directly from untrusted forwarded headers. Scheme, authority, path, raw query and request target participate in the cache identity.
+When the application is behind a reverse proxy, normalize the PSR-7 request URI with the trusted-proxy middleware before this cache. Do not build the effective URI directly from untrusted forwarded headers. Scheme, effective authority, URI path, raw URI query, Host field and wire request target participate independently in the cache identity. Do not derive representation selection from unkeyed request inputs. Set a separate key prefix for independent applications or deployments sharing a backend.
 
 ## Policies
 
@@ -51,7 +53,7 @@ final class CatalogHandler
 
 Configured route policies take precedence over attributes.
 
-Only GET and HEAD can be served from this response cache. Unsafe methods always reach the origin handler. Successful 2xx/3xx unsafe responses invalidate the cached target URI generation.
+Only the exact case-sensitive GET and HEAD methods can be served from this cache. Other unsafe methods reach the origin handler unless `only-if-cached` is present, in which case the cache returns 504 without performing a mutation. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
 
 ### Request callbacks
 
@@ -91,7 +93,7 @@ Resolve trusted application context such as `categoryId` before the cache middle
 
 `tagsFactory` must return a list of nonblank strings. Static tags come first; all tags are trimmed and deduplicated in first occurrence order. The resolved tags participate in the existing policy fingerprint and generation lookup before both reads and writes. Equivalent request inputs should produce deterministic tag order. Existing target, method, route, Vary, credentials, and namespace partitions remain active.
 
-Callbacks run again on each policy resolution, including cache hits, without invoking the origin on a hit. Unsafe requests keep their origin/invalidation path without evaluating callbacks. A `true` predicate continues through all existing cache safety checks. Resolved policies contain data only; requests, closures, and callback results are not persisted or memoized by route.
+Callbacks run again on each policy resolution, including cache hits, without invoking the origin on a hit. Unsafe requests do not evaluate callbacks; `only-if-cached` prevents origin execution even for unsafe methods. A `true` predicate continues through all existing cache safety checks. Resolved policies contain data only; requests, closures, and callback results are not persisted or memoized by route.
 
 Direct `toPolicy()` remains valid for a static attribute. A callback-backed attribute requires `toPolicy($request)`; omitting the request raises `LogicException`. Invalid callback results raise `UnexpectedValueException`. Callback-thrown errors propagate unchanged from policy resolution and never enter the cache-backend fallback path.
 
@@ -109,11 +111,11 @@ new HttpCachePolicy(
 );
 ```
 
-Private entries are keyed by the presented `Authorization` and `Cookie` field values in addition to the normal cache identity, and the outgoing response is forced to `Cache-Control: private`.
+Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
 
 A private policy without credential partitioning is rejected. A request using a private policy but carrying no credentials bypasses the cache.
 
-Responses containing `Set-Cookie` are never stored.
+A credential string is not proof of current authorization. Authenticate and authorize each request before cache use, including token/session expiry and permission checks. Routes whose representation depends on server-side user state, privilege or tenant selection must partition or invalidate on that state; for sensitive content that must never be retained, use `no-store` or disable caching. Responses containing `Set-Cookie` are never stored.
 
 ## Vary
 
@@ -138,11 +140,11 @@ It supports:
 
 Origin-only preconditions such as `If-Match` and `If-Unmodified-Since` bypass cache reuse and are forwarded to the origin handler.
 
-Range responses are not cached.
+Range responses and offload responses (`X-Accel-Redirect`, `X-Sendfile`) are not cached. GET bodies with inconsistent Content-Length or incomplete stream reads are rejected. A conditional hit producing 304 does not reconstruct the stored body. The freshness budget starts at origin response receipt and is reduced by preparation and storage work; a registered PSR-20 clock is shared by the default factories.
 
 ## Storage safety
 
-PSR-16 keys are portable SHA-256 hexadecimal keys. The configured key prefix, target URI, route, policy fingerprint, declared variants and tag generations participate in the key.
+PSR-16 keys are portable SHA-256 hexadecimal keys. The configured key prefix, full request identity, route, policy fingerprint, declared variants and tag generations participate in the key. HTTP Cache 2 changes the key namespace intentionally for the URI and generation security fixes: existing 1.x entries are not reused.
 
 The default maximum cached entry size is 8 MiB:
 
@@ -150,7 +152,7 @@ The default maximum cached entry size is 8 MiB:
 ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
 ```
 
-The limit applies to stored headers and body. Connection-specific fields are removed before storage. Cached payloads are validated again on read, including header names, CR/LF rejection and size limits.
+The limit applies to stored headers and body. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
 
 ## Invalidation
 
@@ -158,7 +160,7 @@ Application tags can be invalidated through `CacheInvalidatorInterface`.
 
 Target URI generations are also used internally. After a successful unsafe request the target URI generation is changed, making prior GET/HEAD entries unreachable.
 
-Tag generations use portable hashed PSR-16 keys and self-heal corrupted backend values. Failed invalidation is treated as an error condition and is reported through the optional logger.
+Tag generations use portable hashed PSR-16 keys. Reads are batched; missing, evicted and corrupt generations are replaced with a freshly persisted positive random value, never a fixed initial generation. This avoids resurrecting entries after metadata eviction. In-flight reads that already obtained an old generation can complete, but their writes cannot be reached through the new generation. PSR-16 does not provide atomic multi-key invalidation, distributed locks or transactional consistency. If invalidation fails, log/monitor the failure and apply application-level retry or recovery; the middleware does not undo an already committed mutation.
 
 ## Failure behavior
 

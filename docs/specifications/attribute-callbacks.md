@@ -2,6 +2,8 @@
 
 **Status:** normative contract for the native attribute callback implementation on PHP 8.5.13+ and the current Componenta dependency lines.
 
+**Audit amendments:** the HTTP Cache 2.0 safety audit deliberately strengthens the URI/method key and initializes persistent random generations on first access. Old cache entries are not reused. `only-if-cached` vetoes origin execution for every method, including unsafe ones. An enabled private policy protects outgoing responses on bypass as well as on storage; a callback-disabled policy still does not rewrite the origin. These changes supersede baseline-preservation statements only where necessary for the confirmed defects; the callback signatures, evaluation, precedence, error behavior and data-only resolved policies remain unchanged.
+
 ## Objective
 
 Allow a route's `CacheResponse` attribute to make a request-dependent caching decision and add request-derived invalidation tags. Resolve these callbacks into ordinary per-request policy data before cache lookup while retaining the existing policy precedence, cache identity, authentication partitioning, response safety checks, and HTTP conditional-response behavior.
@@ -46,7 +48,7 @@ The cited immutable sources establish the pre-change baseline. Implementation an
 
 ### Preservation constraints
 
-- **P1 — Existing static declarations:** no-callback attributes retain current normalization, key identity, request/response behavior, and the ability to call `toPolicy()` without a request.
+- **P1 — Existing static declarations:** no-callback attributes retain static normalization, policy fingerprint dimensions, request/response behavior subject to the audit amendments, and the ability to call `toPolicy()` without a request.
 - **P2 — Policy precedence:** configured route policy remains the default first choice; method attributes continue overriding class attributes; composites continue selecting the first non-null declaration. A selected declaration's veto cannot fall through to a later provider or class attribute.
 - **P3 — Protocol behavior:** `only-if-cached` never calls the origin; when no usable entry can be served it returns 504. Existing conditional 304 handling, age/freshness rules, origin-only preconditions, HEAD behavior, and unsafe-request invalidation remain unchanged.
 - **P4 — Failures at existing boundaries:** key/store/read/write/reconstruction/invalidation failures keep their existing fallback/logging semantics. Callback policy errors are not moved into those backend-error catch blocks.
@@ -69,7 +71,7 @@ The resolved policy retains all existing static settings and validation even whe
 
 `HttpCachePolicy::fromArray()` accepts optional boolean `enabled`, defaulting to `true`, using the existing strict boolean-value handling. This allows the explicit selected-disabled state to survive the existing public configuration construction path. No separate callback keys are added to configuration arrays.
 
-The key generator must not append the new always-true `enabled` value to existing enabled-policy fingerprints merely for completeness: static no-callback entries must retain their current key namespace. Disabled policies do not enter middleware key generation or store access.
+The key generator must not append the new always-true `enabled` value to enabled-policy fingerprints merely for completeness. Static no-callback and equivalent callback-enabled policies must use the same revised key namespace. Disabled policies do not enter middleware key generation or store access.
 
 ## Callback contracts
 
@@ -141,11 +143,11 @@ This is consistent with the current boundary: invalid policy construction and `p
 
 `DefaultCacheKeyGenerator` continues adding the target-URI tag and obtaining the current generation of every resolved application tag. Dynamic tags therefore participate before both reads and writes. Invalidating one of them changes the key produced on the next equivalent request, making the previous entry unreachable under the existing generation scheme.
 
-The new feature does not change URI identity or normalization, credential values included in private-cache keys, declared `varyHeaders`, response `Vary` checks, or the response payload format. The callback cannot manufacture a complete key and omit these dimensions.
+The callback feature does not itself change URI identity, credential partitioning, declared `varyHeaders`, or the response payload format. The separate safety audit expands effective URI and wire-target identity and tightens storage/read validation and Vary checks. The callback cannot manufacture a complete key and omit these dimensions.
 
 Cache predicates and tags are evaluated from request information available before the origin executes. A request-local decision must therefore be available on a cache hit as well as a miss. Fetching a handler result solely to determine tags or predicate outcome is outside this API.
 
-Attributes and conversion results are not memoized by route. A long-lived provider or middleware must not retain a prior request, its tags, or its enabled state. The package does not deep-clone requests or redefine PHP closure lifetime/state. Runtime callbacks remain developer-supplied code; they should perform the small request calculation represented by this contract and avoid request-external side effects.
+Attributes and request-resolved conversion results are not memoized by route. The provider may cache bounded reflection metadata by declaring target and method, without retaining attribute instances or request-derived results. A long-lived provider or middleware must not retain a prior request, its tags, or its enabled state. The package does not deep-clone requests or redefine PHP closure lifetime/state. Runtime callbacks remain developer-supplied code; they should perform the small request calculation represented by this contract and avoid request-external side effects.
 
 ## Usage
 
@@ -186,11 +188,11 @@ The application must resolve `previewMode` and `categoryId` before cache middlew
 
 The release target is HTTP Cache 2.x. Both `dev-main` and `dev-spec/attribute-callbacks-2026-11-26` use `2.0.x-dev`; the stricter PHP and dependency baseline must not be published as another release of the existing 1.x line.
 
-Preserve current constructor parameter positions; append callback parameters and the new resolved-policy flag. Existing static attributes and configured policies continue to produce enabled policies by default. Preserve `toPolicy()` for declarations without callbacks and keep old enabled-policy key fingerprints stable.
+Preserve current constructor parameter positions; append callback parameters and the new resolved-policy flag. Existing static attributes and configured policies continue to produce enabled policies by default. Preserve `toPolicy()` for declarations without callbacks and keep enabled-policy fingerprint dimensions stable, while adopting the revised safe key namespace.
 
-The package requires PHP `^8.5.13` throughout Composer, CI, fixtures, and documentation. PHP 8.5 introduced the syntax; PHP 8.5.13 supplies the required native trait callable scope/visibility fix. PHP 8.4 support is removed. The dependency graph uses Componenta Config 4, Router 3, and HTTP 1 with their current compatible dependencies. Unreleased compatibility branches must be installed as actual source revisions, never disguised as released versions. Direct callback invocation adds no DI dependency.
+The package requires PHP `^8.5.13` throughout Composer, CI, fixtures, and documentation. PHP 8.5 introduced the syntax; PHP 8.5.13 supplies the required native trait callable scope/visibility fix. PHP 8.4 support is removed. The dependency graph uses Componenta Config 4, Router 3.1+, and HTTP 1 with their current compatible dependencies. Unreleased compatibility branches must be installed as actual source revisions, never disguised as released versions. Direct callback invocation adds no DI dependency.
 
-Existing response-cache payloads remain readable. Dynamic tags naturally select keys reflecting the newly configured policy; no response-store serialization migration or closure serialization support is introduced.
+Valid response-cache payloads remain structurally readable, but existing 1.x keys are intentionally not reused. Dynamic tags naturally select keys reflecting the newly configured policy; no response-store serialization migration or closure serialization support is introduced.
 
 ## Verification strategy
 
@@ -205,7 +207,7 @@ Use TDD against public attribute conversion, provider composition, key generatio
 | R3, I4 | Reuse one provider and middleware across requests with distinct category/preview values; policy tags and veto outcome always reflect the current request, with no cross-request retention. |
 | R4, P4 | A thrown callback error propagates and triggers neither later-provider fallback nor store/origin access from the failed cache path. Existing store/key failure fallback tests still pass. |
 | I1, P3 | A predicate returning true cannot make authenticated public requests cacheable, permit private caching without credentials, store Set-Cookie, accept undeclared or wildcard Vary, or cache request no-store/range/precondition paths. |
-| I2, P1 | Default enabled-policy keys for old static declarations are unchanged; different credentials, target origins, raw queries, configured namespaces, or declared Vary fields still partition entries with callbacks present. |
+| I2, P1 | Equivalent static and callback-enabled declarations retain identical revised key dimensions; different credentials, target origins, raw queries, configured namespaces, or declared Vary fields still partition entries with callbacks present. |
 | I3 | A hit evaluates only request callbacks, returns the cached response, and does not call origin. On a normal miss, origin runs once under the existing middleware contract. |
 | P3 | Unsafe-method success invalidates the target without invoking callbacks; existing age/freshness, 304 metadata, HEAD, and only-if-cached tests remain preservation controls. |
 | Construction/syntax | Constructing/reflecting callback metadata does not execute its rule. Static anonymous functions and private static first-class callables work on supported PHP 8.5.13+ runtimes; callback-backed `toPolicy()` without a request fails. |
@@ -235,7 +237,7 @@ Add failing public tests for lazy callback construction, strict results, missing
 
 ### Slice 2 — Cache identity and request lifecycle
 
-Add failing middleware tests using real attribute resolution and key generation with controlled stores. Prove cache-hit evaluation without origin execution, cross-request independence, dynamic-tag and target-URI invalidation, preview veto of an existing entry, and only-if-cached behavior. Preserve full key partitioning and all request/response safety gates. No key algorithm or store representation rewrite is required.
+Add failing middleware tests using real attribute resolution and key generation with controlled stores. Prove cache-hit evaluation without origin execution, cross-request independence, dynamic-tag and target-URI invalidation, preview veto of an existing entry, and only-if-cached behavior. Preserve full key partitioning and all request/response safety gates; the separate safety audit strengthens the URI and generation key algorithm without a store format rewrite.
 
 ### Slice 3 — Native syntax, latest dependencies, and documentation
 
@@ -243,4 +245,4 @@ Prove native static anonymous functions, repeated class-specific private static 
 
 ## Convergence check
 
-The implementation is complete only when R1–R4, I1–I4, and P1–P4 hold together. Reject an implementation that treats false as absence, retains callbacks in resolved policy/storage, caches dynamic results by route, weakens Vary/credential partitioning, catches policy errors as backend outages, evaluates response-dependent logic on a hit, or changes static key identity without an explicit revised decision. Confirm examples use supported PHP 8.5 attribute expressions and the published runtime policy matches Composer/CI.
+The implementation is complete only when R1–R4, I1–I4, and P1–P4 hold together. Reject an implementation that treats false as absence, retains callbacks in resolved policy/storage, caches dynamic results by route, weakens Vary/credential partitioning, catches policy errors as backend outages, evaluates response-dependent logic on a hit, or changes static key identity outside the explicitly documented audit amendments. Confirm examples use supported PHP 8.5 attribute expressions and the published runtime policy matches Composer/CI.
