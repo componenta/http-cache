@@ -118,6 +118,8 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 return $this->withDebugHeader($response, 'BYPASS');
             }
 
+            $receipt = (int) $responseTime;
+            $deadline = $ttl > PHP_INT_MAX - $receipt ? PHP_INT_MAX : $receipt + $ttl;
             $response = $this->prepareResponse($request, $response, $policy);
             $storedResponse = $response;
 
@@ -130,8 +132,15 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $storedResponse = $response->withBody($this->streamFactory->createStream($contents));
             }
 
-            $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $initialAge);
-            $stored = $this->store->store($key, $storedResponse, $ttl);
+            $now = time();
+            $remaining = $deadline - $now;
+            if ($remaining <= 0) {
+                return $this->withDebugHeader($response, 'BYPASS');
+            }
+            $elapsed = max(0, $now - $receipt);
+            $age = $initialAge > PHP_INT_MAX - $elapsed ? PHP_INT_MAX : $initialAge + $elapsed;
+            $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $age);
+            $stored = $this->store->store($key, $storedResponse, min($ttl, $remaining));
         } catch (Throwable $exception) {
             $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
             $stored = false;

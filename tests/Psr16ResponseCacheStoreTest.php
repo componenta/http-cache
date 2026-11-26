@@ -155,6 +155,27 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame(PHP_INT_MAX, $cached->age(time()));
     }
 
+    public function testSnapshotTimeDoesNotExtendFreshnessDeadline(): void
+    {
+        $cache = new ArrayCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->method('isReadable')->willReturn(true);
+        $body->method('isSeekable')->willReturn(true);
+        $body->method('getSize')->willReturn(4);
+        $body->method('tell')->willReturn(0);
+        $body->method('eof')->willReturnOnConsecutiveCalls(false, true);
+        $body->method('read')->willReturnCallback(static function (): string {
+            sleep(1);
+            return 'body';
+        });
+        $before = time();
+
+        self::assertFalse($store->store('expired', (new Response(200))->withBody($body), 1));
+        self::assertGreaterThanOrEqual($before + 1, time());
+        self::assertNull($store->fetch('expired'));
+    }
+
     public function testPersistsFreshnessDeadlineFromStorageTtl(): void
     {
         $cache = new ArrayCache();

@@ -49,6 +49,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
     public function store(string $key, ResponseInterface $response, int $ttl): bool
     {
+        $receivedAt = time();
         $status = $response->getStatusCode();
 
         if (
@@ -61,6 +62,8 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
+        $freshUntil = $ttl > PHP_INT_MAX - $receivedAt ? PHP_INT_MAX : $receivedAt + $ttl;
+        $initialAge = ResponseAge::atReceipt($response, (float) $receivedAt);
         $headers = $this->storableHeaders($response);
         $headerBytes = $this->headerBytes($headers);
 
@@ -75,20 +78,23 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         }
 
         $storedAt = time();
-        $freshUntil = $ttl > PHP_INT_MAX - $storedAt
-            ? PHP_INT_MAX
-            : $storedAt + $ttl;
+        $remaining = $freshUntil - $storedAt;
+        if ($remaining <= 0) {
+            return false;
+        }
+        $elapsed = max(0, $storedAt - $receivedAt);
+        $ageAtStore = $initialAge > PHP_INT_MAX - $elapsed ? PHP_INT_MAX : $initialAge + $elapsed;
 
         $cached = new CachedResponse(
             status: $response->getStatusCode(),
             headers: $headers,
             body: $contents,
             storedAt: $storedAt,
-            ageAtStore: ResponseAge::atReceipt($response),
+            ageAtStore: $ageAtStore,
             freshUntil: $freshUntil,
         );
 
-        return $this->cache->set($key, $cached->toArray(), $ttl);
+        return $this->cache->set($key, $cached->toArray(), min($ttl, $remaining));
     }
 
     public function delete(string $key): void

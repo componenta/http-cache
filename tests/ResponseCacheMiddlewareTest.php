@@ -109,7 +109,8 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->method('store')
             ->willReturnCallback(static function (string $key, ResponseInterface $response, int $ttl): bool {
                 self::assertSame('cache-key', $key);
-                self::assertSame(60, $ttl);
+                self::assertGreaterThan(0, $ttl);
+                self::assertLessThanOrEqual(60, $ttl);
                 self::assertStringContainsString('private', strtolower($response->getHeaderLine('Cache-Control')));
                 self::assertStringNotContainsString('public', strtolower($response->getHeaderLine('Cache-Control')));
                 $vary = strtolower($response->getHeaderLine('Vary'));
@@ -225,7 +226,8 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->method('store')
             ->willReturnCallback(static function (string $key, ResponseInterface $response, int $ttl): bool {
                 self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
-                self::assertSame(60, $ttl);
+                self::assertGreaterThan(0, $ttl);
+                self::assertLessThanOrEqual(60, $ttl);
 
                 return true;
             });
