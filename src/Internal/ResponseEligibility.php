@@ -45,7 +45,14 @@ final class ResponseEligibility
             return null;
         }
 
-        if (!self::storageIsPermitted($response, $policy, $cacheControl)) {
+        // An absent Cache-Control field will be made explicitly cacheable
+        // by prepare(); an existing field must already allow shared storage.
+        if (!$policy->private && $response->hasHeader(Header::CACHE_CONTROL)
+            && !self::hasSharedStoragePermission(
+                $response->getStatusCode(),
+                $cacheControl,
+                $response->hasHeader(Header::EXPIRES),
+            )) {
             return null;
         }
 
@@ -111,26 +118,22 @@ final class ResponseEligibility
         return max(1, $ttl);
     }
 
-    private static function storageIsPermitted(
-        ResponseInterface $response,
-        HttpCachePolicy $policy,
+    public static function hasSharedStoragePermission(
+        int $status,
         CacheControl $cacheControl,
+        bool $hasExpires,
     ): bool {
-        if (!$response->hasHeader(Header::CACHE_CONTROL) || $policy->private) {
-            return true;
-        }
-
         if (
             $cacheControl->has('public')
             || $cacheControl->has('max-age')
-            || $response->hasHeader(Header::EXPIRES)
+            || $hasExpires
             || $cacheControl->has('s-maxage')
         ) {
             return true;
         }
 
         return in_array(
-            $response->getStatusCode(),
+            $status,
             [200, 203, 204, 300, 301, 308, 404, 405, 410, 414, 501],
             true,
         );

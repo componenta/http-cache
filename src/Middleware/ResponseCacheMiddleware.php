@@ -373,6 +373,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         $responseControl = CacheControl::fromValues($headers['cache-control'] ?? []);
         if (!$responseControl->isValid() || $responseControl->has('no-store') || $responseControl->has('no-cache')
             || $responseControl->has('must-understand') || (!$policy->private && $responseControl->has('private'))
+            || (!$policy->private && !ResponseEligibility::hasSharedStoragePermission(
+                $cached->status,
+                $responseControl,
+                isset($headers['expires']),
+            ))
             || !ResponseEligibility::varyIsCompatible($headers['vary'] ?? [], $policy)) {
             return false;
         }
