@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Store;
 
 use Componenta\Http\Cache\Internal\BodySnapshot;
+use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Protocol\ResponseAge;
 use Componenta\Http\Header;
 use InvalidArgumentException;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\SimpleCache\CacheInterface;
 
@@ -19,6 +21,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
     public function __construct(
         private CacheInterface $cache,
         private int $maxEntryBytes = self::DEFAULT_MAX_ENTRY_BYTES,
+        private ClockInterface $clock = new SystemClock(),
     ) {
         if ($maxEntryBytes <= 0) {
             throw new InvalidArgumentException('HTTP cache maximum entry size must be greater than zero.');
@@ -36,7 +39,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         /** @var array<string, mixed> $payload */
         $cached = CachedResponse::fromArray($payload);
 
-        if ($cached === null || $cached->storedAt > time()) {
+        if ($cached === null || $cached->storedAt > $this->clock->now()->getTimestamp()) {
             return null;
         }
 
@@ -49,7 +52,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
     public function store(string $key, ResponseInterface $response, int $ttl): bool
     {
-        $receivedAt = time();
+        $receivedAt = $this->clock->now()->getTimestamp();
         $status = $response->getStatusCode();
 
         if (
@@ -77,7 +80,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
-        $storedAt = time();
+        $storedAt = $this->clock->now()->getTimestamp();
         $remaining = $freshUntil - $storedAt;
         if ($remaining <= 0) {
             return false;

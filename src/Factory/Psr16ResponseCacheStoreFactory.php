@@ -7,7 +7,9 @@ namespace Componenta\Http\Cache\Factory;
 use Componenta\Config\Config;
 use Componenta\Http\Cache\ConfigKey;
 use Componenta\Http\Cache\Internal\ContainerService;
+use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
+use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
 use Psr\SimpleCache\CacheInterface;
 use RuntimeException;
@@ -28,6 +30,7 @@ final readonly class Psr16ResponseCacheStoreFactory
         return new Psr16ResponseCacheStore(
             cache: ContainerService::get($container, CacheInterface::class),
             maxEntryBytes: $maxEntryBytes,
+            clock: $container->has(ClockInterface::class) ? ContainerService::get($container, ClockInterface::class) : new SystemClock(),
         );
     }
 }

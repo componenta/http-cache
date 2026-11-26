@@ -7,11 +7,13 @@ namespace Componenta\Http\Cache\Factory;
 use Componenta\Config\Config;
 use Componenta\Http\Cache\ConfigKey;
 use Componenta\Http\Cache\Internal\ContainerService;
+use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
 use Componenta\Http\Cache\Policy\CachePolicyProviderInterface;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
+use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -45,6 +47,7 @@ final readonly class ResponseCacheMiddlewareFactory
             debugHeader: $config->bool(ConfigKey::DEBUG_HEADER, false),
             maxEntryBytes: $maxEntryBytes,
             logger: $logger,
+            clock: $container->has(ClockInterface::class) ? ContainerService::get($container, ClockInterface::class) : new SystemClock(),
         );
     }
 }

@@ -43,7 +43,7 @@ final class ResponseAge
             return 0;
         }
 
-        $dateValue = HttpDate::parse($response->getHeaderLine(Header::DATE));
+        $dateValue = HttpDate::parse($response->getHeaderLine(Header::DATE), (int) $responseTime);
 
         if ($dateValue === null) {
             return 0;

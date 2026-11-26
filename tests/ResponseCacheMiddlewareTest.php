@@ -13,11 +13,14 @@ use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
+use Componenta\Http\Cache\Tests\Fixture\MutableClock;
+use DateTimeImmutable;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
@@ -470,6 +473,30 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testEtagPreparationConsumesFreshnessBudget(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@100'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 1));
+        $store->expects(self::never())->method('store');
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->method('isReadable')->willReturn(true);
+        $body->method('isSeekable')->willReturn(true);
+        $body->method('getSize')->willReturn(4);
+        $body->method('tell')->willReturn(0);
+        $body->method('eof')->willReturn(true);
+        $body->method('read')->willReturnCallback(static function () use ($clock): string {
+            $clock->advance(1);
+            return 'body';
+        });
+        $response = (new Response(200))->withBody($body);
+
+        $result = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/stream'), $this->handler($response));
+
+        self::assertSame(200, $result->getStatusCode());
+        self::assertSame($body, $result->getBody());
+    }
+
     public function testEtagReadFailureReturnsOriginResponseWithoutCacheWrite(): void
     {
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
@@ -637,6 +664,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         CacheInvalidatorInterface $invalidator,
         int $maxEntryBytes = 8_388_608,
         ?LoggerInterface $logger = null,
+        ?ClockInterface $clock = null,
     ): ResponseCacheMiddleware {
         $factory = new Psr17Factory();
 
@@ -649,6 +677,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
             streamFactory: $factory,
             maxEntryBytes: $maxEntryBytes,
             logger: $logger,
+            clock: $clock ?? new \Componenta\Http\Cache\Internal\SystemClock(),
         );
     }
 }

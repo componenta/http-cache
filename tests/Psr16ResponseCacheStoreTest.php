@@ -6,6 +6,8 @@ namespace Componenta\Http\Cache\Tests;
 
 use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
 use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
+use Componenta\Http\Cache\Tests\Fixture\MutableClock;
+use DateTimeImmutable;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 
@@ -199,21 +201,20 @@ final class Psr16ResponseCacheStoreTest extends TestCase
     public function testSnapshotTimeDoesNotExtendFreshnessDeadline(): void
     {
         $cache = new InMemoryCache();
-        $store = new Psr16ResponseCacheStore($cache);
+        $clock = new MutableClock(new DateTimeImmutable('@100'));
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
         $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
         $body->method('isReadable')->willReturn(true);
         $body->method('isSeekable')->willReturn(true);
         $body->method('getSize')->willReturn(4);
         $body->method('tell')->willReturn(0);
         $body->method('eof')->willReturn(true);
-        $body->method('read')->willReturnCallback(static function (): string {
-            sleep(1);
+        $body->method('read')->willReturnCallback(static function () use ($clock): string {
+            $clock->advance(1);
             return 'body';
         });
-        $before = time();
 
         self::assertFalse($store->store('expired', (new Response(200))->withBody($body), 1));
-        self::assertGreaterThanOrEqual($before + 1, time());
         self::assertNull($store->fetch('expired'));
     }
 

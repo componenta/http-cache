@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Middleware;
 
 use Componenta\Http\Cache\Internal\BodySnapshot;
+use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
 use Componenta\Http\Cache\Key\RequestTarget;
@@ -21,6 +22,7 @@ use Componenta\Http\Header;
 use Componenta\Http\HttpMethod;
 use InvalidArgumentException;
 use Psr\Http\Message\ResponseFactoryInterface;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -43,6 +45,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         private bool $debugHeader = false,
         private int $maxEntryBytes = 8_388_608,
         private ?LoggerInterface $logger = null,
+        private ClockInterface $clock = new SystemClock(),
     ) {
         if ($maxEntryBytes <= 0) {
             throw new InvalidArgumentException('HTTP cache maximum entry size must be greater than zero.');
@@ -99,9 +102,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS');
         }
 
-        $requestTime = microtime(true);
+        $requestTime = (float) $this->clock->now()->format('U.u');
         $response = $handler->handle($request);
-        $responseTime = microtime(true);
+        $responseTime = (float) $this->clock->now()->format('U.u');
 
         if (
             !$response->hasHeader(Header::DATE)
@@ -132,7 +135,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $storedResponse = $response->withBody($this->streamFactory->createStream($contents));
             }
 
-            $now = time();
+            $now = $this->clock->now()->getTimestamp();
             $remaining = $deadline - $now;
             if ($remaining <= 0) {
                 return $this->withDebugHeader($this->protectPrivateResponse($response, $policy), 'BYPASS');
@@ -171,7 +174,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     private function cachedResponse(ServerRequestInterface $request, CachedResponse $cached): ResponseInterface
     {
         $response = $cached->toResponse($this->responseFactory, $this->streamFactory)
-            ->withHeader(Header::AGE, (string) $cached->age(time()));
+            ->withHeader(Header::AGE, (string) $cached->age($this->clock->now()->getTimestamp()));
 
         if ($this->isNotModified($request, $response, $cached)) {
             $response = $this->notModifiedResponse($response);
@@ -234,7 +237,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        $now = time();
+        $now = $this->clock->now()->getTimestamp();
         $remainingFreshness = $cached->remainingFreshness($now);
 
         if ($remainingFreshness === null || $remainingFreshness <= 0) {
@@ -472,7 +475,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        $condition = HttpDate::parse($request->getHeaderLine(Header::IF_MODIFIED_SINCE));
+        $condition = HttpDate::parse($request->getHeaderLine(Header::IF_MODIFIED_SINCE), $this->clock->now()->getTimestamp());
 
         if ($condition === null) {
             return false;
