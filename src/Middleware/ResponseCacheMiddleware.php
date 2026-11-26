@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Middleware;
 
+use Componenta\Http\Cache\Internal\AgeMetadata;
 use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\ConditionalRequest;
@@ -367,7 +368,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         $headers = StoredHeaders::normalize($cached->headers);
-        if ($headers === null || !ResponseEligibility::hasRequiredStatusFields($cached->status, $headers)) {
+        if ($headers === null
+            || !ResponseEligibility::hasRequiredStatusFields($cached->status, $headers)
+            || $cached->ageAtStore < AgeMetadata::minimumAt($headers, $cached->storedAt)) {
             return false;
         }
         $responseControl = CacheControl::fromValues($headers['cache-control'] ?? []);

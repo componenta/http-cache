@@ -10,6 +10,7 @@ use Componenta\Http\Cache\Internal\EntrySize;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Internal\StoredHeaders;
+use Componenta\Http\Cache\Protocol\ResponseAge;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -64,6 +65,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             || $freshness->remainingAt($now) <= 0
             || !CacheableStatus::allows($status)
             || !ResponseEligibility::hasSafeStorageMetadata($response)
+            || $freshness->ageAt($now) < ResponseAge::atReceipt($response, (float) $now)
         ) {
             return false;
         }

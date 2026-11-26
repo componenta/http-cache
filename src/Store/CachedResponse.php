@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Store;
 
+use Componenta\Http\Cache\Internal\AgeMetadata;
 use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\StoredHeaders;
@@ -115,7 +116,9 @@ final readonly class CachedResponse
         }
 
         $normalized = StoredHeaders::normalize($headers);
-        if ($normalized === null || !ResponseEligibility::hasRequiredStatusFields($status, $normalized)) {
+        if ($normalized === null
+            || !ResponseEligibility::hasRequiredStatusFields($status, $normalized)
+            || $ageAtStore < AgeMetadata::minimumAt($normalized, $storedAt)) {
             return null;
         }
 
