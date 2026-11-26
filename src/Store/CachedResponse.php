@@ -117,6 +117,7 @@ final readonly class CachedResponse
 
         $normalized = StoredHeaders::normalize($headers);
         if ($normalized === null
+            || !StoredHeaders::hasValidDate($normalized, $storedAt)
             || !ResponseEligibility::hasRequiredStatusFields($status, $normalized)
             || $ageAtStore < AgeMetadata::minimumAt($normalized, $storedAt)) {
             return null;

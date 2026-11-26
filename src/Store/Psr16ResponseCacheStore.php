@@ -10,7 +10,9 @@ use Componenta\Http\Cache\Internal\EntrySize;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Internal\StoredHeaders;
+use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Protocol\ResponseAge;
+use Componenta\Http\Header;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -68,6 +70,12 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             || $freshness->ageAt($now) < ResponseAge::atReceipt($response, (float) $now)
         ) {
             return false;
+        }
+
+        // The caller supplies the actual receipt time, even if this adapter is
+        // reached later. Do not manufacture a newer Date from the write time.
+        if (HttpDate::parse($response->getHeaderLine(Header::DATE), $freshness->receivedAt) === null) {
+            $response = $response->withHeader(Header::DATE, HttpDate::format($freshness->receivedAt));
         }
 
         $headers = StoredHeaders::forStorage($response);

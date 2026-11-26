@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Tests;
 
+use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Store\CacheFreshness;
 use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
 use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
@@ -14,6 +15,42 @@ use PHPUnit\Framework\TestCase;
 
 final class Psr16ResponseCacheStoreTest extends TestCase
 {
+    public function testStoreSuppliesDateAtReceiptRatherThanAtWriteTime(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1005'));
+        $store = new Psr16ResponseCacheStore(new InMemoryCache(), clock: $clock);
+        foreach ([[], ['Date' => 'invalid']] as $headers) {
+            self::assertTrue($store->store('key', new Response(200, $headers, 'body'), CacheFreshness::fromTtl(1000, 60)));
+            $cached = $store->fetch('key');
+            self::assertNotNull($cached);
+            self::assertSame([HttpDate::format(1000)], $cached->headers['Date']);
+            self::assertSame(5, $cached->ageAtStore);
+        }
+    }
+
+    public function testStorePreservesValidOriginDate(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1005'));
+        $store = new Psr16ResponseCacheStore(new InMemoryCache(), clock: $clock);
+        $date = HttpDate::format(990);
+        self::assertTrue($store->store('key', new Response(200, ['Date' => $date]), CacheFreshness::fromTtl(1000, 60, 10)));
+        self::assertSame([$date], $store->fetch('key')?->headers['Date']);
+    }
+
+    public function testFetchRejectsMissingOrInvalidDate(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+        self::assertTrue($store->store('key', new Response(200, [], 'body'), CacheFreshness::fromTtl(1000, 60)));
+        $valid = $cache->values['key'];
+        self::assertIsArray($valid);
+        foreach ([[], ['Date' => ['invalid']], ['Date' => [HttpDate::format(1000), HttpDate::format(1001)]]] as $headers) {
+            $cache->values['key'] = array_replace($valid, ['headers' => $headers]);
+            self::assertNull($store->fetch('key'));
+        }
+    }
+
     public function testDeleteFailureIsVisible(): void
     {
         $cache = $this->createStub(\Psr\SimpleCache\CacheInterface::class);
@@ -47,7 +84,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
     public function testRejectsBodyLargerThanConfiguredLimit(): void
     {
         $cache = new InMemoryCache();
-        $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 4);
+        $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 41);
 
         self::assertFalse($store->store('key', new Response(200, [], '12345'), CacheFreshness::fromTtl(time(), 60)));
         self::assertSame([], $cache->values);
@@ -129,7 +166,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         foreach ([407, 426] as $status) {
             $cache->values['key'] = [
                 'status' => $status,
-                'headers' => ['Cache-Control' => ['public, max-age=60']],
+                'headers' => ['Date' => [HttpDate::format(1000)], 'Cache-Control' => ['public, max-age=60']],
                 'body' => '',
                 'storedAt' => 1000,
                 'freshUntil' => 1060,
@@ -171,7 +208,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $store = new Psr16ResponseCacheStore($cache, clock: $clock);
         $base = [
             'status' => 204,
-            'headers' => ['Content-Length' => ['0']],
+            'headers' => ['Date' => [HttpDate::format(1000)], 'Content-Length' => ['0']],
             'body' => '',
             'storedAt' => 1000,
             'ageAtStore' => 0,
@@ -179,9 +216,9 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         ];
         $cache->values['key'] = $base;
         self::assertNull($store->fetch('key'));
-        $cache->values['key'] = array_replace($base, ['status' => 205, 'headers' => ['Content-Length' => ['10']]]);
+        $cache->values['key'] = array_replace($base, ['status' => 205, 'headers' => ['Date' => [HttpDate::format(1000)], 'Content-Length' => ['10']]]);
         self::assertNull($store->fetch('key'));
-        $cache->values['key'] = array_replace($base, ['status' => 200, 'headers' => ['Content-Length' => ['-1']]]);
+        $cache->values['key'] = array_replace($base, ['status' => 200, 'headers' => ['Date' => [HttpDate::format(1000)], 'Content-Length' => ['-1']]]);
         self::assertNull($store->fetch('key'));
     }
 
@@ -199,7 +236,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
         $cache->values['key'] = [
             'status' => 200,
-            'headers' => ['Content-Length' => ['100']],
+            'headers' => ['Date' => [HttpDate::format(1000)], 'Content-Length' => ['100']],
             'body' => 'body',
             'storedAt' => 1000,
             'freshUntil' => 1060,
@@ -280,7 +317,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         foreach ([401, 405] as $status) {
             $cache->values['key'] = [
                 'status' => $status,
-                'headers' => ['Cache-Control' => ['public, max-age=60']],
+                'headers' => ['Date' => [HttpDate::format(1000)], 'Cache-Control' => ['public, max-age=60']],
                 'body' => '',
                 'storedAt' => 1000,
                 'freshUntil' => 1060,
@@ -341,7 +378,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         ];
 
         foreach ([
-            ['Age' => ['120']],
+            ['Date' => [HttpDate::format(990)], 'Age' => ['120']],
             ['Date' => ['Thu, 01 Jan 1970 00:14:30 GMT']],
         ] as $headers) {
             $cache->values['key'] = $base + ['headers' => $headers];
@@ -367,7 +404,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $cache = new InMemoryCache();
         $cache->values['key'] = [
             'status' => 200,
-            'headers' => ["X-Test\r\nInjected" => ['value']],
+            'headers' => ["X-Test\r\nInjected" => ['value'], 'Date' => [HttpDate::format(time())]],
             'body' => 'body',
             'storedAt' => time(),
             'ageAtStore' => 0,
@@ -382,14 +419,17 @@ final class Psr16ResponseCacheStoreTest extends TestCase
     {
         $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
+        $now = time();
         $valid = [
             'status' => 200,
-            'headers' => [],
+            'headers' => ['Date' => [HttpDate::format($now)]],
             'body' => 'body',
-            'storedAt' => time(),
+            'storedAt' => $now,
             'ageAtStore' => 0,
-            'freshUntil' => time() + 60,
+            'freshUntil' => $now + 60,
         ];
+        $cache->values['key'] = $valid;
+        self::assertNotNull($store->fetch('key'));
 
         foreach ([
             ['status' => 206],
@@ -412,6 +452,9 @@ final class Psr16ResponseCacheStoreTest extends TestCase
             ['storedAt' => time() + 30, 'freshUntil' => time() + 60],
             ['freshUntil' => 0],
         ] as $invalid) {
+            if (isset($invalid['headers'])) {
+                $invalid['headers'] += $valid['headers'];
+            }
             $cache->values['key'] = array_replace($valid, $invalid);
             self::assertNull($store->fetch('key'));
         }
@@ -447,7 +490,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $backend = new InMemoryCache();
         $backend->values['key'] = [
             'status' => 200,
-            'headers' => [],
+            'headers' => ['Date' => [HttpDate::format(990)]],
             'body' => 'legacy',
             'storedAt' => 990,
             'ageAtStore' => 0,
@@ -463,13 +506,13 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $backend = new InMemoryCache();
         $backend->values['key'] = [
             'status' => 200,
-            'headers' => ['X' => [''], 'Y' => ['']],
+            'headers' => ['Date' => [HttpDate::format(1000)], 'X' => [''], 'Y' => ['']],
             'body' => '',
             'storedAt' => 1000,
             'ageAtStore' => 0,
             'freshUntil' => 1060,
         ];
-        $store = new Psr16ResponseCacheStore($backend, maxEntryBytes: 5, clock: $clock);
+        $store = new Psr16ResponseCacheStore($backend, maxEntryBytes: 42, clock: $clock);
 
         self::assertNull($store->fetch('key'));
     }
@@ -477,23 +520,24 @@ final class Psr16ResponseCacheStoreTest extends TestCase
     public function testExactEntryByteLimitIsAcceptedForEmptyBody(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
-        $store = new Psr16ResponseCacheStore(new InMemoryCache(), maxEntryBytes: 5, clock: $clock);
+        $store = new Psr16ResponseCacheStore(new InMemoryCache(), maxEntryBytes: 42, clock: $clock);
         self::assertTrue($store->store('key', new Response(200, ['X' => '']), CacheFreshness::fromTtl(1000, 60)));
         self::assertSame('', $store->fetch('key')?->body);
     }
 
     public function testRejectsOversizedCachedPayloadOnRead(): void
     {
+        $now = time();
         $cache = new InMemoryCache();
         $cache->values['key'] = [
             'status' => 200,
-            'headers' => [],
+            'headers' => ['Date' => [HttpDate::format($now)]],
             'body' => '12345',
-            'storedAt' => time(),
+            'storedAt' => $now,
             'ageAtStore' => 0,
             'freshUntil' => time() + 60,
         ];
-        $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 4);
+        $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 41);
 
         self::assertNull($store->fetch('key'));
     }

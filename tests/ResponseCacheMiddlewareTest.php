@@ -321,6 +321,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(500, $response->getStatusCode());
     }
 
+    public function testCustomStoreCannotReplayEntryWithoutValidDate(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        foreach ([[], ['Date' => ['invalid']]] as $headers) {
+            $store = $this->createStub(ResponseCacheStoreInterface::class);
+            $store->method('fetch')->willReturn(new CachedResponse(
+                status: 200,
+                headers: $headers,
+                body: 'cached',
+                storedAt: 1000,
+                freshUntil: 1060,
+            ));
+            $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+                ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+            self::assertSame('origin', (string) $response->getBody());
+        }
+    }
+
     public function testCustomStoreCannotReplayMethodNotAllowedWithoutAllow(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
@@ -328,7 +347,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 405,
-            headers: ['Cache-Control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Cache-Control' => ['public, max-age=60']],
             body: '',
             storedAt: 990,
             freshUntil: 1050,
@@ -367,7 +386,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 302,
-            headers: ['Cache-Control' => ['no-transform'], 'Location' => ['/old']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Cache-Control' => ['no-transform'], 'Location' => ['/old']],
             body: '',
             storedAt: 990,
             freshUntil: 1050,
@@ -392,7 +411,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 302,
-            headers: ['Cache-Control' => ['public, max-age=60'], 'Location' => ['/target']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Cache-Control' => ['public, max-age=60'], 'Location' => ['/target']],
             body: '',
             storedAt: 990,
             freshUntil: 1050,
@@ -504,11 +523,12 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $streams = $this->createMock(\Psr\Http\Message\StreamFactoryInterface::class);
         $streams->expects(self::never())->method('createStream');
         $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $now = time();
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['eTaG' => ['W/"abc"']],
+            headers: ['Date' => [HttpDate::format($now)]] + ['eTaG' => ['W/"abc"']],
             body: 'large representation',
-            storedAt: time(),
+            storedAt: $now,
             freshUntil: time() + 60,
         ));
         $middleware = new ResponseCacheMiddleware(
@@ -536,11 +556,12 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
         $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $now = time();
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 404,
-            headers: ['Cache-Control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format($now)]] + ['Cache-Control' => ['public, max-age=60']],
             body: 'missing',
-            storedAt: time(),
+            storedAt: $now,
             freshUntil: time() + 60,
         ));
         $invalidator = $this->createStub(CacheInvalidatorInterface::class);
@@ -776,7 +797,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 204,
-            headers: ['Content-Length' => ['0']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Content-Length' => ['0']],
             body: '',
             storedAt: 990,
             freshUntil: 1060,
@@ -804,11 +825,12 @@ final class ResponseCacheMiddlewareTest extends TestCase
     public function testConditionalResponseDoesNotInheritFactoryDefaults(): void
     {
         $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $now = time();
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['ETag' => ['"abc"']],
+            headers: ['Date' => [HttpDate::format($now)]] + ['ETag' => ['"abc"']],
             body: 'body',
-            storedAt: time(),
+            storedAt: $now,
             freshUntil: time() + 60,
         ));
         $factory = $this->createStub(\Psr\Http\Message\ResponseFactoryInterface::class);
@@ -904,7 +926,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['ETag' => ['"cached"'], 'Cache-Control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['ETag' => ['"cached"'], 'Cache-Control' => ['public, max-age=60']],
             body: 'cached',
             storedAt: 990,
             freshUntil: $deadline,
@@ -960,11 +982,12 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
         $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $now = time();
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format($now - 120)]] + ['Cache-Control' => ['public, max-age=60']],
             body: 'stale',
-            storedAt: time() - 120,
+            storedAt: $now - 120,
             freshUntil: time() - 1,
         ));
         $store->method('store')->willReturn(false);
@@ -985,7 +1008,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public, max-age=60']] + $headers,
+            headers: ['Cache-Control' => ['public, max-age=60']] + $headers + ['Date' => [HttpDate::format(990)]],
             body: 'stale',
             storedAt: 990,
             ageAtStore: 0,
@@ -1019,7 +1042,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public, max-age=10']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Cache-Control' => ['public, max-age=10']],
             body: 'stale',
             storedAt: 990,
             ageAtStore: 0,
@@ -1040,7 +1063,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: [],
+            headers: ['Date' => [HttpDate::format(990)]] + [],
             body: 'invalid',
             storedAt: 990,
             freshUntil: PHP_INT_MIN,
@@ -1059,7 +1082,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public, max-age=600']],
+            headers: ['Date' => [HttpDate::format(1000)]] + ['Cache-Control' => ['public, max-age=600']],
             body: 'stale',
             storedAt: 1000,
             freshUntil: 1600,
@@ -1077,7 +1100,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public']],
+            headers: ['Date' => [HttpDate::format(1000)]] + ['Cache-Control' => ['public']],
             body: 'stale',
             storedAt: 1000,
             ageAtStore: 55,
@@ -1096,7 +1119,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public, max-age=600']],
+            headers: ['Date' => [HttpDate::format(1000)]] + ['Cache-Control' => ['public, max-age=600']],
             body: 'fresh',
             storedAt: 1000,
             ageAtStore: 100,
@@ -1117,11 +1140,12 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $policies = $this->policyProvider($policy);
         $keys = $this->keyGenerator();
         $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $now = time();
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format($now)]] + ['Cache-Control' => ['public, max-age=60']],
             body: 'cached',
-            storedAt: time(),
+            storedAt: $now,
             freshUntil: time() + 5,
         ));
         $store->method('store')->willReturn(false);
@@ -1393,7 +1417,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Cache-Control' => ['no-store'], 'cache-control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Cache-Control' => ['no-store'], 'cache-control' => ['public, max-age=60']],
             body: 'invalid',
             storedAt: 990,
             freshUntil: 1060,
@@ -1411,7 +1435,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['Connection' => ['Cache-Control'], 'Cache-Control' => ['public, max-age=60']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['Connection' => ['Cache-Control'], 'Cache-Control' => ['public, max-age=60']],
             body: 'invalid',
             storedAt: 990,
             freshUntil: 1060,
@@ -1430,13 +1454,13 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $store = $this->createStub(ResponseCacheStoreInterface::class);
         $store->method('fetch')->willReturn(new CachedResponse(
             status: 200,
-            headers: ['X-Extra' => ['0123456789']],
+            headers: ['Date' => [HttpDate::format(990)]] + ['X-Extra' => ['0123456789']],
             body: 'body',
             storedAt: 990,
             freshUntil: 1060,
         ));
 
-        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), maxEntryBytes: 10, clock: $clock)
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), maxEntryBytes: 55, clock: $clock)
             ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
 
         self::assertSame('origin', (string) $response->getBody());

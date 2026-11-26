@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Internal;
 
 use Componenta\Http\Cache\Protocol\HeaderList;
+use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Header;
 use Psr\Http\Message\ResponseInterface;
 
@@ -50,6 +51,12 @@ final class StoredHeaders
         }
 
         return $normalized;
+    }
+
+    /** @param array<string, list<string>> $headers Lowercase field names. */
+    public static function hasValidDate(array $headers, int $referenceTime): bool
+    {
+        return isset($headers['date']) && HttpDate::parse(implode(', ', $headers['date']), $referenceTime) !== null;
     }
 
     /**

@@ -369,6 +369,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         $headers = StoredHeaders::normalize($cached->headers);
         if ($headers === null
+            || !StoredHeaders::hasValidDate($headers, $cached->storedAt)
             || !ResponseEligibility::hasRequiredStatusFields($cached->status, $headers)
             || $cached->ageAtStore < AgeMetadata::minimumAt($headers, $cached->storedAt)) {
             return false;
