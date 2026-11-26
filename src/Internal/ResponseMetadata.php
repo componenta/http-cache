@@ -94,6 +94,22 @@ final class ResponseMetadata
         array_unshift($parts, 'private');
 
         $response = $response->withHeader(Header::CACHE_CONTROL, implode(', ', $parts));
+
+        // Cache-Control and Vary are end-to-end fields. A Connection option
+        // must not instruct a downstream intermediary to remove protection.
+        if ($response->hasHeader(Header::CONNECTION)) {
+            $connection = HeaderList::split($response->getHeader(Header::CONNECTION));
+            $retained = array_values(array_filter(
+                $connection,
+                static fn (string $name): bool => !in_array(strtolower($name), ['cache-control', 'vary'], true),
+            ));
+            if ($retained !== $connection) {
+                $response = $retained === []
+                    ? $response->withoutHeader(Header::CONNECTION)
+                    : $response->withHeader(Header::CONNECTION, implode(', ', $retained));
+            }
+        }
+
         foreach (['X-Accel-Expires', 'Surrogate-Control', 'CDN-Cache-Control', 'Cloudflare-CDN-Cache-Control'] as $field) {
             if ($response->hasHeader($field)) {
                 $response = $response->withoutHeader($field);
