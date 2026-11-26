@@ -140,6 +140,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
             }
             $responseTime = (float) $this->clock->now()->format('U.u');
+            if ($responseTime < $requestTime) {
+                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+            }
 
             if (
                 !$response->hasHeader(Header::DATE)
