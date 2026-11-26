@@ -60,11 +60,20 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
             if (!array_key_exists($tag, $versions)) {
                 throw new RuntimeException('HTTP cache tag generation is missing.');
             }
-            $ordered[$tag] = $versions[$tag];
+            $ordered[$tag] = self::requireGeneration($versions[$tag]);
         }
         ksort($ordered, SORT_STRING);
 
         return $ordered;
+    }
+
+    private static function requireGeneration(mixed $version): int
+    {
+        if (!is_int($version)) {
+            throw new RuntimeException('HTTP cache tag generation must be an integer.');
+        }
+
+        return $version;
     }
 
     /**
