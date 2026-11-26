@@ -31,46 +31,65 @@ final class ResponseMetadata
                 sprintf('%s, max-age=%d', $policy->private ? 'private' : 'public', $maxAge),
             );
         }
-        if ($policy->private) {
-            $response = self::forcePrivateCacheControl($response);
-        }
-
-        $vary = self::varyHeaders($response);
-
-        foreach ($policy->varyHeaders as $header) {
-            $vary[] = $header;
-        }
-
-        if ($policy->private) {
-            $vary[] = strtolower(Header::AUTHORIZATION);
-            $vary[] = strtolower(Header::COOKIE);
-        }
-
-        $vary = array_values(array_unique($vary));
-
-        if ($vary !== []) {
-            $response = $response->withHeader(Header::VARY, implode(', ', $vary));
-        }
-
-        return $response;
+        return self::protectPolicy($response, $policy);
     }
 
-    public static function protectPrivate(ResponseInterface $response, ?HttpCachePolicy $policy): ResponseInterface
+    public static function protectPolicy(ResponseInterface $response, ?HttpCachePolicy $policy): ResponseInterface
     {
-        // An explicit callback veto is not permission to change the origin response.
-        if ($policy === null || !$policy->enabled || !$policy->private) {
+        // A veto or absent policy must leave the origin response untouched.
+        if ($policy === null || !$policy->enabled) {
             return $response;
         }
 
-        $response = self::forcePrivateCacheControl($response);
-        $vary = self::varyHeaders($response);
-        if (!in_array('*', $vary, true)) {
-            $vary[] = strtolower(Header::AUTHORIZATION);
-            $vary[] = strtolower(Header::COOKIE);
-            $response = $response->withHeader(Header::VARY, implode(', ', array_unique($vary)));
+        $required = $policy->varyHeaders;
+        if ($policy->private) {
+            $response = self::forcePrivateCacheControl($response);
+            $required[] = strtolower(Header::AUTHORIZATION);
+            $required[] = strtolower(Header::COOKIE);
         }
 
-        return $response;
+        // Representation selection remains relevant to downstream caches even
+        // when local storage is unavailable or the request bypasses this cache.
+        if ($required === []) {
+            return $response;
+        }
+
+        $vary = self::varyHeaders($response);
+        if (!in_array('*', $vary, true)) {
+            $response = $response->withHeader(
+                Header::VARY,
+                implode(', ', array_unique([...$vary, ...$required])),
+            );
+        }
+
+        return self::preserveEndToEndFields(
+            $response,
+            $policy->private ? ['cache-control', 'vary'] : ['vary'],
+        );
+    }
+
+    /** @param list<string> $protected */
+    private static function preserveEndToEndFields(ResponseInterface $response, array $protected): ResponseInterface
+    {
+        // A Connection option must not instruct an intermediary to remove
+        // the end-to-end fields that enforce the selected cache policy.
+        if (!$response->hasHeader(Header::CONNECTION)) {
+            return $response;
+        }
+
+        $connection = HeaderList::split($response->getHeader(Header::CONNECTION));
+        $retained = array_values(array_filter(
+            $connection,
+            static fn (string $name): bool => !in_array(strtolower($name), $protected, true),
+        ));
+
+        if ($retained === $connection) {
+            return $response;
+        }
+
+        return $retained === []
+            ? $response->withoutHeader(Header::CONNECTION)
+            : $response->withHeader(Header::CONNECTION, implode(', ', $retained));
     }
 
     private static function forcePrivateCacheControl(ResponseInterface $response): ResponseInterface
@@ -94,21 +113,6 @@ final class ResponseMetadata
         array_unshift($parts, 'private');
 
         $response = $response->withHeader(Header::CACHE_CONTROL, implode(', ', $parts));
-
-        // Cache-Control and Vary are end-to-end fields. A Connection option
-        // must not instruct a downstream intermediary to remove protection.
-        if ($response->hasHeader(Header::CONNECTION)) {
-            $connection = HeaderList::split($response->getHeader(Header::CONNECTION));
-            $retained = array_values(array_filter(
-                $connection,
-                static fn (string $name): bool => !in_array(strtolower($name), ['cache-control', 'vary'], true),
-            ));
-            if ($retained !== $connection) {
-                $response = $retained === []
-                    ? $response->withoutHeader(Header::CONNECTION)
-                    : $response->withHeader(Header::CONNECTION, implode(', ', $retained));
-            }
-        }
 
         foreach (['X-Accel-Expires', 'Surrogate-Control', 'CDN-Cache-Control', 'Cloudflare-CDN-Cache-Control'] as $field) {
             if ($response->hasHeader($field)) {

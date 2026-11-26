@@ -84,7 +84,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         if ($policy === null || !$policy->enabled || !$eligible) {
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
-                : ResponseMetadata::protectPrivate($handler->handle($request), $policy);
+                : ResponseMetadata::protectPolicy($handler->handle($request), $policy);
         }
 
         try {
@@ -94,7 +94,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'BYPASS')
-                : $this->withDebugHeader(ResponseMetadata::protectPrivate($handler->handle($request), $policy), 'BYPASS');
+                : $this->withDebugHeader(ResponseMetadata::protectPolicy($handler->handle($request), $policy), 'BYPASS');
         }
 
         // A forced refresh or failed read may leave a previous entry behind.
@@ -137,11 +137,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         $stored = false;
         try {
             if ($requestTime === null) {
-                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+                return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
             }
             $responseTime = (float) $this->clock->now()->format('U.u');
             if ($responseTime < $requestTime) {
-                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+                return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
             }
 
             if (
@@ -155,7 +155,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $ttl = ResponseEligibility::ttl($response, $policy, $initialAge, $responseTime, $this->maxEntryBytes);
 
             if ($ttl === null) {
-                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+                return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
             }
 
             $receipt = (int) $responseTime;
@@ -168,7 +168,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             if ($bodyless || $generateEtag || $validateLength) {
                 $contents = BodySnapshot::read($response->getBody(), $bodyless ? 0 : $this->maxEntryBytes);
                 if ($contents === null || ($bodyless && $contents !== '') || ($validateLength && !ResponseEligibility::matchesContentLength($response->getHeader(Header::CONTENT_LENGTH), strlen($contents)))) {
-                    return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+                    return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
                 }
                 if ($generateEtag) {
                     $response = $response->withHeader(Header::ETAG, ResponseMetadata::weakEtag($response, $contents));
@@ -178,7 +178,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             $now = $this->clock->now()->getTimestamp();
             if ($now < $freshness->receivedAt || $freshness->remainingAt($now) <= 0) {
-                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+                return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
             }
             // Stage cache-specific metadata without modifying the response that
             // will be returned when admission or storage fails.
@@ -210,7 +210,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
         }
 
-        return $this->withDebugHeader($stored ? $response : ResponseMetadata::protectPrivate($response, $policy), $stored ? 'MISS' : 'BYPASS');
+        return $this->withDebugHeader($stored ? $response : ResponseMetadata::protectPolicy($response, $policy), $stored ? 'MISS' : 'BYPASS');
     }
 
     private function handleUnsafe(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -246,7 +246,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         $response = ConditionalRequest::isNotModified($request, $cached, $selectedAt)
             ? $this->notModifiedResponse($cached)
             : $cached->toResponse($this->responseFactory, $this->streamFactory);
-        $response = ResponseMetadata::protectPrivate($response, $policy);
+        $response = ResponseMetadata::protectPolicy($response, $policy);
 
         // Factories and streams may perform work or suspend. Do not publish an
         // expired hit or an age measured before response reconstruction.
