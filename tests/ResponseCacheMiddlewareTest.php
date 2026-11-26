@@ -462,7 +462,7 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('Cache-Control'));
     }
 
-    public function testFailedStorageDoesNotPublishSynthesizedCacheHeaders(): void
+    public function testFailedStorageDoesNotPublishSynthesizedFreshnessButRetainsVary(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language']);
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
@@ -478,8 +478,93 @@ final class ResponseCacheMiddlewareTest extends TestCase
             $this->handler(new Response(200, [], 'body')),
         );
         self::assertFalse($response->hasHeader('Cache-Control'));
-        self::assertFalse($response->hasHeader('Vary'));
+        self::assertSame('accept-language', $response->getHeaderLine('Vary'));
         self::assertNotSame('', $response->getHeaderLine('ETag'));
+    }
+
+    public function testFailedStoragePreservesDeclaredVariantsWithExplicitOriginFreshness(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language']);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::once())->method('store')->willReturn(false);
+        $request = (new ServerRequest('GET', 'https://example.test/resource'))->withHeader('Accept-Language', 'ru');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            $request,
+            $this->handler(new Response(200, ['Cache-Control' => 'public, max-age=120'], 'ru')),
+        );
+
+        self::assertSame('public, max-age=120', $response->getHeaderLine('Cache-Control'));
+        self::assertSame('accept-language', $response->getHeaderLine('Vary'));
+    }
+
+    public function testPrivateBypassPreservesEveryDeclaredVariant(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language'], private: true, allowAuthenticated: true);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $request = (new ServerRequest('GET', 'https://example.test/account'))
+            ->withHeader('Authorization', 'Bearer token')
+            ->withHeader('Cache-Control', 'no-store');
+        $response = $this->middleware($policies, $keys, $store, $this->createStub(CacheInvalidatorInterface::class))->process(
+            $request,
+            $this->handler(new Response(200, ['Cache-Control' => 'public, max-age=120'], 'ru')),
+        );
+
+        self::assertSame('private, max-age=120', $response->getHeaderLine('Cache-Control'));
+        self::assertSame('accept-language, authorization, cookie', $response->getHeaderLine('Vary'));
+    }
+
+    public function testPublicBypassCannotNominateDeclaredVaryAsConnectionSpecific(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language']);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, [
+                'Cache-Control' => 'public, max-age=120',
+                'Connection' => 'Vary, close',
+                'Vary' => 'Accept-Encoding',
+            ], 'body')),
+        );
+
+        self::assertSame('public, max-age=120', $response->getHeaderLine('Cache-Control'));
+        self::assertSame('accept-encoding, accept-language', $response->getHeaderLine('Vary'));
+        self::assertSame('close', $response->getHeaderLine('Connection'));
+    }
+
+    public function testWildcardVaryIsPreservedWithoutAppendingPolicyFields(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language']);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, ['Vary' => '*'], 'body')),
+        );
+
+        self::assertSame('*', $response->getHeaderLine('Vary'));
+    }
+
+    public function testDisabledPolicyDoesNotModifyOriginVariantHeaders(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60, varyHeaders: ['Accept-Language'], private: true, allowAuthenticated: true, enabled: false);
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $origin = new Response(200, ['Cache-Control' => 'public, max-age=120'], 'body');
+        $response = $this->middleware($this->policyProvider($policy), $keys, $store, $this->createStub(CacheInvalidatorInterface::class))->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler($origin),
+        );
+
+        self::assertSame($origin, $response);
     }
 
     public function testFailedPrivateStoragePreservesRestrictionsWithoutSynthesizingMaxAge(): void
