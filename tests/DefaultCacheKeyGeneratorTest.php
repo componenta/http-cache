@@ -169,6 +169,20 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         $generator->generate($request, new HttpCachePolicy(ttl: 60));
     }
 
+    public function testInvalidGenerationTypeCannotProduceCacheKey(): void
+    {
+        $request = new ServerRequest('GET', 'https://example.test/items');
+        $tags = $this->createStub(TagVersionStoreInterface::class);
+        $tags->method('versions')->willReturn([
+            'catalog' => 'not-an-integer',
+            \Componenta\Http\Cache\Key\RequestTarget::cacheTag($request) => 1,
+        ]);
+        $generator = new DefaultCacheKeyGenerator($tags);
+
+        $this->expectException(\RuntimeException::class);
+        $generator->generate($request, new HttpCachePolicy(ttl: 60, tags: ['catalog']));
+    }
+
     public function testIncompleteTagSnapshotCannotProduceCacheKey(): void
     {
         $tags = $this->createStub(TagVersionStoreInterface::class);

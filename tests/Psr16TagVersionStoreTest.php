@@ -25,6 +25,20 @@ final class Psr16TagVersionStoreTest extends TestCase
         self::assertMatchesRegularExpression('/^[A-Za-z0-9_.]+$/', $cache->lastKey);
     }
 
+    public function testTagNamespacesRemainIndependentWithEmbeddedSeparators(): void
+    {
+        $cache = new InMemoryCache();
+        $first = new Psr16TagVersionStore($cache, "tenant");
+        $second = new Psr16TagVersionStore($cache, "tenant\0region");
+        $before = $first->versions(["region\0catalog"]);
+        $other = $second->versions(['catalog']);
+
+        self::assertCount(2, $cache->values);
+        $second->invalidateTags(['catalog']);
+        self::assertSame($before, $first->versions(["region\0catalog"]));
+        self::assertNotSame($other, $second->versions(['catalog']));
+    }
+
     public function testEvictedGenerationCannotReviveAnInvalidatedEntry(): void
     {
         $cache = new TagSpyCache();
