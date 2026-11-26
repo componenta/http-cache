@@ -165,7 +165,7 @@ final class ResponseEligibility
     }
 
     /**
-     * @param array<string, list<string>> $headers Case-insensitive field index with lowercase names.
+     * @param array<array-key, array<string>> $headers Field index with lowercase names.
      */
     public static function hasRequiredStatusFields(int $status, array $headers): bool
     {
