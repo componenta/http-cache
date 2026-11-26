@@ -161,12 +161,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $receipt = (int) $responseTime;
             $freshness = CacheFreshness::fromTtl($receipt, $ttl, $initialAge);
             $snapshot = null;
-            $contents = null;
+            $bodySize = $response->getBody()->getSize();
 
             $bodyless = $request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($response->getStatusCode());
             $generateEtag = !$bodyless && $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);
             $validateLength = $request->getMethod() === HttpMethod::GET && $response->hasHeader(Header::CONTENT_LENGTH);
-            if ($bodyless || $generateEtag || $validateLength || $response->getBody()->getSize() === null) {
+            if ($bodyless || $generateEtag || $validateLength || $bodySize === null) {
                 $contents = BodySnapshot::read($response->getBody(), $bodyless ? 0 : $this->maxEntryBytes);
                 if ($contents === null || ($bodyless && $contents !== '') || ($validateLength && !ResponseEligibility::matchesContentLength($response->getHeader(Header::CONTENT_LENGTH), strlen($contents)))) {
                     return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
@@ -174,6 +174,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 if ($generateEtag) {
                     $response = $response->withHeader(Header::ETAG, ResponseMetadata::weakEtag($response, $contents));
                 }
+                $bodySize = strlen($contents);
                 $snapshot = $this->streamFactory->createStream($contents);
             }
 
@@ -192,8 +193,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 StoredHeaders::forStorage($prepared),
                 $this->maxEntryBytes,
             );
-            $bodySize = $contents === null ? $response->getBody()->getSize() : strlen($contents);
-            if ($bodyBudget === null || $bodySize === null || $bodySize < 0 || $bodySize > $bodyBudget) {
+            if ($bodyBudget === null || $bodySize < 0 || $bodySize > $bodyBudget) {
                 return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
             }
 
