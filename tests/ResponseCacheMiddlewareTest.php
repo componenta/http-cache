@@ -977,8 +977,8 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
-    #[DataProvider('inconsistentAgeHeaders')]
     /** @param array<string, list<string>> $headers */
+    #[DataProvider('inconsistentAgeHeaders')]
     public function testCustomStoreCannotUnderstateAgeToReplayStaleResponse(array $headers): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
