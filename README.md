@@ -53,7 +53,7 @@ final class CatalogHandler
 
 Configured route policies take precedence over attributes. Array settings are validated when the configuration policy provider is constructed, including policies for routes not yet matched. Unknown settings and conflicting snake_case/camelCase aliases are rejected.
 
-Only the exact case-sensitive GET and HEAD methods can be served from this cache. Requests with non-empty or unknown-size bodies, non-empty parsed bodies, nonzero Content-Length or Transfer-Encoding bypass caching. Unsafe methods reach the origin handler unless `only-if-cached` is present, in which case this application middleware returns 504 without performing a mutation. This deliberately preserves the application's strict no-origin contract, rather than the unsafe-method write-through rule for generic HTTP intermediaries in RFC 9111 §4. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
+Only the exact case-sensitive GET and HEAD methods can be served from this cache. Requests with non-empty or unknown-size bodies, non-empty parsed bodies, uploaded files, nonzero Content-Length or Transfer-Encoding bypass caching. PSR-7 uploaded files are independent of the current body stream. Unsafe methods reach the origin handler unless `only-if-cached` is present, in which case this application middleware returns 504 without performing a mutation. This deliberately preserves the application's strict no-origin contract, rather than the unsafe-method write-through rule for generic HTTP intermediaries in RFC 9111 §4. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
 
 ### Request callbacks
 
@@ -135,7 +135,7 @@ It supports:
 - request `max-age`, `min-fresh`, `no-cache`, `no-store`, `only-if-cached`
 - weak `If-None-Match` comparison
 - `If-Modified-Since`
-- RFC age calculation using `Date`, `Age`, request time and response time; successful misses publish the corrected age as well as storing it
+- RFC age calculation using `Date`, `Age`, request time and response time; successful misses publish the corrected age including elapsed storage time
 - generated weak SHA-256 ETags for bounded seekable GET bodies, using length-framed representation metadata and binary content
 
 Origin-only preconditions such as `If-Match` and `If-Unmodified-Since` bypass cache reuse and are forwarded to the origin handler.
@@ -152,7 +152,7 @@ The default maximum cached entry size is 8 MiB:
 ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
 ```
 
-The limit applies to the combined stored headers and body (inclusive, including the header name and delimiter accounting). Oversized entries are rejected on read as well as on write. The middleware independently enforces the configured entry-size limit on hits from custom stores. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
+The limit applies to the combined stored headers and body (inclusive, including the header name and delimiter accounting). Oversized entries are rejected on read as well as on write. The middleware independently enforces the configured entry-size limit on hits from custom stores. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Stored header validation rejects case-insensitive duplicate names and hop-by-hop fields, including on middleware hits from custom stores. Custom stores must preserve the same admission and freshness contracts.
 
 ### Store extension contract (2.x)
 
@@ -184,7 +184,7 @@ Tag generations use portable hashed PSR-16 keys. Reads are batched; missing, evi
 
 If a `Psr\Log\LoggerInterface` service is registered, cache key, read, reconstruction, write and invalidation failures are logged with fixed messages and exception context. Configure the logger to redact sensitive exception details when necessary. Logging is best effort; a failing logger cannot replace the origin response or mask a completed mutation.
 
-Request-body inspection, cache lookup, cached-metadata validation and write failures fail open to the origin response. Cache-generated freshness and Vary headers are published only after successful storage; bypasses preserve the original cache directives apart from the enabled private policy's protective rewriting. A validator generated from a complete body may still be returned after a storage failure. If a cache-eligible refresh yields a response that cannot replace a previous entry, the old entry for that exact key is removed; a failed removal is logged. This is conservative eviction, not a 304 metadata merge. A request bypassed by `no-store` or a policy veto does not access or remove existing entries. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
+Request-body inspection, cache lookup, cached-metadata validation, cache timing and write failures fail open to the origin response. Clock failures must not prevent origin execution or discard a completed response; a failed final age measurement preserves the last successful age calculation. Cache-generated freshness and Vary headers are published only after successful storage; bypasses preserve the original cache directives apart from the enabled private policy's protective rewriting. A validator generated from a complete body may still be returned after a storage failure. If a cache-eligible refresh yields a response that cannot replace a previous entry, the old entry for that exact key is removed; a failed removal is logged. This is conservative eviction, not a 304 metadata merge. A request bypassed by `no-store` or a policy veto does not access or remove existing entries. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
 
 The optional debug response header can be enabled with:
 
