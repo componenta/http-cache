@@ -56,7 +56,7 @@ final class ConfigProvider extends BaseConfigProvider
             CacheKeyGeneratorInterface::class => DefaultCacheKeyGenerator::class,
             ResponseCacheStoreInterface::class => Psr16ResponseCacheStore::class,
             TagVersionStoreInterface::class => Psr16TagVersionStore::class,
-            CacheInvalidatorInterface::class => Psr16TagVersionStore::class,
+            CacheInvalidatorInterface::class => TagVersionStoreInterface::class,
         ];
     }
 
