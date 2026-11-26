@@ -130,6 +130,26 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertStringContainsString('private', strtolower($response->getHeaderLine('Cache-Control')));
     }
 
+    public function testPrivateBypassCannotNominateProtectiveHeadersAsConnectionSpecific(): void
+    {
+        $request = (new ServerRequest('GET', 'https://example.test/account'))
+            ->withHeader('Authorization', 'Bearer secret');
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(
+            new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true),
+        );
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [
+            'Cache-Control' => 'public',
+            'Connection' => 'keep-alive, Cache-Control, VARY',
+        ], 'personal'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame('private', $response->getHeaderLine('Cache-Control'));
+        self::assertSame('keep-alive', $response->getHeaderLine('Connection'));
+        self::assertStringContainsString('authorization', strtolower($response->getHeaderLine('Vary')));
+    }
+
     public function testPrivatePolicyProtectsEvenNonStorableResponses(): void
     {
         $request = (new ServerRequest('GET', 'https://example.test/account'))
@@ -962,6 +982,42 @@ final class ResponseCacheMiddlewareTest extends TestCase
         $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
 
         self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testLoggerFailureDoesNotMaskCacheBackendFailure(): void
+    {
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willThrowException(new RuntimeException('backend unavailable'));
+        $store->method('store')->willReturn(false);
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())->method('warning')->willThrowException(new RuntimeException('logger unavailable'));
+
+        $response = $this->middleware(
+            $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            logger: $logger,
+        )->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testLoggerFailureDoesNotMaskSuccessfulMutation(): void
+    {
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator->expects(self::once())->method('invalidateTags')->willThrowException(new RuntimeException('backend unavailable'));
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())->method('error')->willThrowException(new RuntimeException('logger unavailable'));
+        $response = $this->middleware(
+            $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            $this->keyGenerator(),
+            $this->createStub(ResponseCacheStoreInterface::class),
+            $invalidator,
+            logger: $logger,
+        )->process(new ServerRequest('PUT', 'https://example.test/items'), $this->handler(new Response(204)));
+
+        self::assertSame(204, $response->getStatusCode());
     }
 
     public function testCacheReadFailureIsLoggedAndFallsBackToOrigin(): void
