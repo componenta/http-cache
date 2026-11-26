@@ -47,7 +47,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return null;
         }
 
-        if (strlen($cached->body) + $this->headerBytes($cached->headers) > $this->maxEntryBytes) {
+        if (strlen($cached->body) > $this->maxEntryBytes - $this->headerBytes($cached->headers)) {
             return null;
         }
 
@@ -71,7 +71,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         $headers = $this->storableHeaders($response);
         $headerBytes = $this->headerBytes($headers);
 
-        if ($headerBytes >= $this->maxEntryBytes) {
+        if ($headerBytes > $this->maxEntryBytes) {
             return false;
         }
 
@@ -171,7 +171,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             foreach ($values as $value) {
                 $bytes += strlen($name) + strlen($value) + 4;
 
-                if ($bytes >= $this->maxEntryBytes) {
+                if ($bytes > $this->maxEntryBytes) {
                     return $bytes;
                 }
             }
