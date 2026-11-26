@@ -24,6 +24,35 @@ final class Psr16TagVersionStoreTest extends TestCase
         self::assertMatchesRegularExpression('/^[A-Za-z0-9_.]+$/', $cache->lastKey);
     }
 
+    public function testEvictedGenerationCannotReviveAnInvalidatedEntry(): void
+    {
+        $cache = new TagSpyCache();
+        $store = new Psr16TagVersionStore($cache);
+        $initial = $store->versions(['product:42'])['product:42'];
+        self::assertGreaterThan(0, $initial);
+
+        $store->invalidateTags(['product:42']);
+        $invalidated = $store->versions(['product:42'])['product:42'];
+        self::assertNotSame($initial, $invalidated);
+
+        $cache->storedValue = null;
+        $replacement = $store->versions(['product:42'])['product:42'];
+        self::assertGreaterThan(0, $replacement);
+        self::assertNotSame($initial, $replacement);
+        self::assertNotSame($invalidated, $replacement);
+        self::assertSame($replacement, $store->versions(['product:42'])['product:42']);
+    }
+
+    public function testMissingGenerationWriteFailureIsVisible(): void
+    {
+        $cache = new TagSpyCache();
+        $cache->setResult = false;
+        $store = new Psr16TagVersionStore($cache);
+
+        $this->expectException(RuntimeException::class);
+        $store->versions(['product:42']);
+    }
+
     public function testInvalidationFailureIsNotSilentlyIgnored(): void
     {
         $cache = new TagSpyCache();
