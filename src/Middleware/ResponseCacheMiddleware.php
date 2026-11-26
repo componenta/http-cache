@@ -61,7 +61,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
         $policy = $this->policies->policyFor($request);
 
-        if ($policy === null || !$policy->enabled || !$this->isRequestCacheable($request, $policy)) {
+        if ($policy === null || !$policy->enabled || !$this->isRequestCacheable($request, $policy, $cacheControl)) {
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
                 : $this->protectPrivateResponse($handler->handle($request), $policy);
@@ -77,7 +77,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 : $this->withDebugHeader($this->protectPrivateResponse($handler->handle($request), $policy), 'BYPASS');
         }
 
-        if (!$this->bypassLookup($request)) {
+        if (!$this->bypassLookup($request, $cacheControl)) {
             try {
                 $cached = $this->store->fetch($key);
             } catch (Throwable $exception) {
@@ -85,9 +85,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $cached = null;
             }
 
-            if ($cached !== null && $this->requestAcceptsCachedResponse($request, $cached, $policy)) {
+            if ($cached !== null && $this->requestAcceptsCachedResponse($cached, $policy, $cacheControl)) {
                 try {
-                    return $this->cachedResponse($request, $cached);
+                    return $this->protectPrivateResponse($this->cachedResponse($request, $cached), $policy);
                 } catch (Throwable $exception) {
                     $this->logger?->warning('HTTP cached response reconstruction failed.', ['exception' => $exception]);
                     $cached = null;
@@ -146,7 +146,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $stored = false;
         }
 
-        return $this->withDebugHeader($this->protectPrivateResponse($response, $policy), $stored ? 'MISS' : 'BYPASS');
+        return $this->withDebugHeader($stored ? $response : $this->protectPrivateResponse($response, $policy), $stored ? 'MISS' : 'BYPASS');
     }
 
     private function handleUnsafe(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -202,7 +202,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    private function isRequestCacheable(ServerRequestInterface $request, HttpCachePolicy $policy): bool
+    private function isRequestCacheable(ServerRequestInterface $request, HttpCachePolicy $policy, CacheControl $cacheControl): bool
     {
         if (
             !$policy->allowsMethod($request->getMethod())
@@ -213,7 +213,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        if ($this->requestCacheControl($request)->has('no-store')) {
+        if ($cacheControl->has('no-store')) {
             return false;
         }
 
@@ -223,11 +223,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     }
 
     private function requestAcceptsCachedResponse(
-        ServerRequestInterface $request,
         CachedResponse $cached,
         HttpCachePolicy $policy,
+        CacheControl $cacheControl,
     ): bool {
-        $cacheControl = $this->requestCacheControl($request);
         $maxAge = $cacheControl->integer('max-age');
         $minFresh = $cacheControl->integer('min-fresh');
 
@@ -494,13 +493,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         return $validator <= $condition;
     }
 
-    private function bypassLookup(ServerRequestInterface $request): bool
+    private function bypassLookup(ServerRequestInterface $request, CacheControl $cacheControl): bool
     {
         if ($request->hasHeader(Header::IF_MATCH) || $request->hasHeader(Header::IF_UNMODIFIED_SINCE)) {
             return true;
         }
 
-        $cacheControl = $this->requestCacheControl($request);
         $maxAge = $cacheControl->integer('max-age');
 
         return $cacheControl->has('no-cache')
