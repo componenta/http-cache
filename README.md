@@ -28,7 +28,7 @@ A typical order is:
 4. response cache
 5. route dispatch
 
-When the application is behind a reverse proxy, normalize the PSR-7 request URI with the trusted-proxy middleware before this cache. Do not build the effective URI directly from untrusted forwarded headers. Scheme, effective authority, URI path, raw URI query, parsed PSR-7 query parameters, resolved router parameters, Host field and wire request target participate independently in the cache identity. Parameters must be scalar data, null or arrays of those values; unsupported or excessively nested data causes a cache bypass. Do not derive representation selection from unkeyed request inputs. Set a separate key prefix for independent applications or deployments sharing a backend.
+When the application is behind a reverse proxy, normalize the PSR-7 request URI with the trusted-proxy middleware before this cache. Do not build the effective URI directly from untrusted forwarded headers. Scheme, effective authority, URI path (including the raw empty-path distinction), raw URI query, parsed PSR-7 query parameters, resolved router parameters, individual Host field values and wire request target participate independently in the cache identity. Empty paths and `/` share the effective-URI invalidation tag, not necessarily the representation key. Parameters must be scalar data, null or arrays of those values; unsupported or excessively nested data causes a cache bypass. Do not derive representation selection from unkeyed request inputs. Set a separate key prefix for independent applications or deployments sharing a backend.
 
 ## Policies
 
@@ -135,12 +135,12 @@ It supports:
 - request `max-age`, `min-fresh`, `no-cache`, `no-store`, `only-if-cached`
 - weak `If-None-Match` comparison
 - `If-Modified-Since`
-- RFC age calculation using `Date`, `Age`, request time and response time
+- RFC age calculation using `Date`, `Age`, request time and response time; successful misses publish the corrected age as well as storing it
 - generated weak SHA-256 ETags for bounded seekable GET bodies, using length-framed representation metadata and binary content
 
 Origin-only preconditions such as `If-Match` and `If-Unmodified-Since` bypass cache reuse and are forwarded to the origin handler.
 
-Range responses and offload responses (`X-Accel-Redirect`, `X-Sendfile`) are not cached. GET response bodies with inconsistent Content-Length or incomplete stream reads are rejected, as are HEAD, 204 and 205 responses with content. Invalid Content-Length syntax and simultaneous Content-Length/Transfer-Encoding are not accepted. A 204 must have neither field; a 205 may advertise only a zero content length. HEAD may advertise the length of the selected GET representation despite having an empty body. Statuses 428, 429, 431 and 511 cannot be configured as cacheable (RFC 6585), even with explicit freshness directives. Factory-provided defaults are not merged into cached representations; apply response decoration outside the cache if needed on every response. A conditional hit producing 304 does not reconstruct the stored body. The absolute freshness budget starts at origin response receipt and is reduced by preparation and storage work. On a hit, the middleware also checks the origin's explicit freshness directives rather than trusting the backend deadline alone. A registered PSR-20 clock is shared by the default factories.
+Range responses and offload responses (`X-Accel-Redirect`, `X-Sendfile`) are not cached. GET response bodies with inconsistent Content-Length or incomplete stream reads are rejected, as are HEAD, 204 and 205 responses with content. Invalid Content-Length syntax and simultaneous Content-Length/Transfer-Encoding are not accepted. A 204 must have neither field; a 205 may advertise only a zero content length. HEAD may advertise the length of the selected GET representation despite having an empty body. The storage adapter also rejects mismatched Content-Length for nonempty bodies, independently of the middleware. Statuses 428, 429, 431 and 511 cannot be configured as cacheable (RFC 6585), even with explicit freshness directives. Factory-provided defaults are not merged into cached representations; apply response decoration outside the cache if needed on every response. A conditional hit producing 304 does not reconstruct the stored body. The absolute freshness budget starts at origin response receipt and is reduced by preparation and storage work. On a hit, the middleware also checks the origin's explicit freshness directives rather than trusting the backend deadline alone. A registered PSR-20 clock is shared by the default factories.
 
 ## Storage safety
 
@@ -152,7 +152,7 @@ The default maximum cached entry size is 8 MiB:
 ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
 ```
 
-The limit applies to the combined stored headers and body (inclusive, including the header name and delimiter accounting). Oversized entries are rejected on read as well as on write. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
+The limit applies to the combined stored headers and body (inclusive, including the header name and delimiter accounting). Oversized entries are rejected on read as well as on write. The middleware independently enforces the configured entry-size limit on hits from custom stores. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
 
 ### Store extension contract (2.x)
 
