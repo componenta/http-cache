@@ -45,6 +45,8 @@ To use existing checkouts, pass their parent directory to `php .github/scripts/p
 
 The workflow checks PHP 8.5.13 and the current PHP 8.5 patch. Its lowest-dependency job resolves the lowest compatible versions within these current major lines while retaining the required source revisions; it does not substitute an older Componenta major.
 
+The separate release workflow installs from the tracked `composer.json`, audits that dependency set, and runs the full test suite and static analysis against it. The development source checkouts and generated manifest are not used for publication. A release therefore remains blocked until compatible dependencies satisfying the public manifest are available as stable releases. The quality workflow continues to verify the pinned development graph.
+
 ## Verification scope
 
 The callback tests were introduced against the old public API and failed for the missing capability before implementation. They cover direct calls, native attribute construction, private static first-class callables declared through a shared trait used by two classes, repeated evaluations with current inputs, result validation, and exception boundaries. The full existing test suite remains the preservation control. PHPStan runs at the repository's established maximum level. The package uses PHPUnit 13.4 for its current PHP 8.5 runtime baseline.

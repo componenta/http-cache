@@ -26,10 +26,8 @@ jobs:
           coverage: none
           tools: composer:2.11.2
       - run: composer validate --strict
-      - name: Prepare compatible development dependencies
-        uses: ./.github/actions/development-dependencies
-      - run: COMPOSER=.composer-development.json composer install --no-interaction --prefer-dist --no-progress
-      - run: COMPOSER=.composer-development.json composer audit
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: composer audit
       - run: composer check
 
   publish:
