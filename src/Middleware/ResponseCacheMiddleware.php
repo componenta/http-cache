@@ -10,6 +10,7 @@ use Componenta\Http\Cache\Internal\ConditionalRequest;
 use Componenta\Http\Cache\Internal\EntrySize;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\ResponseMetadata;
+use Componenta\Http\Cache\Internal\StoredHeaders;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
@@ -324,12 +325,13 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        $headers = array_change_key_case($cached->headers, CASE_LOWER);
+        $headers = StoredHeaders::normalize($cached->headers);
+        if ($headers === null) {
+            return false;
+        }
         $responseControl = CacheControl::fromValues($headers['cache-control'] ?? []);
         if (!$responseControl->isValid() || $responseControl->has('no-store') || $responseControl->has('no-cache')
             || $responseControl->has('must-understand') || (!$policy->private && $responseControl->has('private'))
-            || isset($headers['set-cookie']) || isset($headers['content-range'])
-            || isset($headers['x-accel-redirect']) || isset($headers['x-sendfile'])
             || !ResponseEligibility::varyIsCompatible($headers['vary'] ?? [], $policy)) {
             return false;
         }
@@ -358,8 +360,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         if (($request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($cached->status)) && $cached->body !== '') {
             return false;
         }
-        if (isset($headers['transfer-encoding'])
-            || !ResponseEligibility::validContentFraming($cached->status, $headers['content-length'] ?? [])) {
+        if (!ResponseEligibility::validContentFraming($cached->status, $headers['content-length'] ?? [])) {
             return false;
         }
         if ($request->getMethod() === HttpMethod::GET

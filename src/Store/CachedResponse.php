@@ -6,6 +6,7 @@ namespace Componenta\Http\Cache\Store;
 
 use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
+use Componenta\Http\Cache\Internal\StoredHeaders;
 use Componenta\Http\Cache\Protocol\CacheControl;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -113,33 +114,9 @@ final readonly class CachedResponse
             return null;
         }
 
-        $normalized = [];
-        foreach ($headers as $name => $values) {
-            if (
-                !is_string($name)
-                || preg_match("@^[!#$%&'*+.^_\\x60|~0-9A-Za-z-]+$@D", $name) !== 1
-                || !is_array($values)
-                || array_is_list($values) === false
-            ) {
-                return null;
-            }
-
-            $lowerName = strtolower($name);
-            if (isset($normalized[$lowerName]) || in_array($lowerName, [
-                'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authentication-info',
-                'proxy-authorization', 'proxy-connection', 'te', 'trailer',
-                'transfer-encoding', 'upgrade', 'set-cookie', 'content-range', 'x-accel-redirect', 'x-sendfile',
-            ], true) || $values === []) {
-                return null;
-            }
-
-            foreach ($values as $value) {
-                if (!is_string($value) || preg_match('/[\\x00-\\x08\\x0A-\\x1F\\x7F]/', $value) === 1) {
-                    return null;
-                }
-            }
-            /** @var list<string> $values */
-            $normalized[$lowerName] = $values;
+        $normalized = StoredHeaders::normalize($headers);
+        if ($normalized === null) {
+            return null;
         }
 
         $lengths = $normalized['content-length'] ?? [];
