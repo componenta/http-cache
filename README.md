@@ -127,7 +127,7 @@ This prevents a response selected by one request header set from being reused fo
 
 ## Cache-Control and validators
 
-The middleware preserves valid application-provided `Cache-Control` directives and honors restrictive directives such as `no-store` and `no-cache`. Malformed directive syntax prevents cache use or storage. Under an enabled private policy, a malformed response field is replaced with `private, no-store`. A synthesized max-age never extends an explicit Expires lifetime.
+The middleware preserves valid application-provided `Cache-Control` directives and honors restrictive directives such as `no-store` and `no-cache`. Malformed directive syntax prevents cache use or storage, including arguments on standardized argumentless directives (for example, `public=foo`). Qualified `private`/`no-cache` directives and syntactically valid extension arguments remain recognized. Under an enabled private policy, a malformed response field is replaced with `private, no-store`. A synthesized max-age never extends an explicit Expires lifetime.
 
 It supports:
 

@@ -27,7 +27,13 @@ final readonly class CacheControl
             }
 
             $argument = isset($segments[1]) ? trim($segments[1]) : null;
-            if ($argument !== null && !self::isToken($argument) && !self::isQuotedString($argument)) {
+            if ($argument !== null && (
+                (!self::isToken($argument) && !self::isQuotedString($argument))
+                || in_array($name, [
+                    'public', 'no-store', 'no-transform', 'only-if-cached',
+                    'must-revalidate', 'proxy-revalidate', 'must-understand',
+                ], true)
+            )) {
                 $valid = false;
             }
             $directives[$name][] = $argument;

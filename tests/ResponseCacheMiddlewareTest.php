@@ -308,6 +308,34 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/'), $handler);
     }
 
+    public function testMalformedPublicDirectiveDoesNotAuthorizeStorageOrReplay(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [302]);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $request = new ServerRequest('GET', 'https://example.test/resource');
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)->process(
+            $request,
+            $this->handler(new Response(302, ['Location' => '/target', 'Cache-Control' => 'public=foo'])),
+        );
+        self::assertSame('/target', $response->getHeaderLine('Location'));
+
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 302,
+            headers: ['Date' => [HttpDate::format(1000)], 'Cache-Control' => ['public=foo'], 'Location' => ['/old']],
+            body: '',
+            storedAt: 1000,
+            freshUntil: 1060,
+        ));
+        $result = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)->process(
+            $request,
+            $this->handler(new Response(302, ['Location' => '/current', 'Cache-Control' => 'no-store'])),
+        );
+        self::assertSame('/current', $result->getHeaderLine('Location'));
+    }
+
     public function testNonHeuristicStatusWithoutExplicitStoragePermissionIsNotCached(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, statuses: [500]);

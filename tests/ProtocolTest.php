@@ -31,6 +31,17 @@ final class ProtocolTest extends TestCase
         self::assertFalse(CacheControl::fromValues(['invalid name=1'])->isValid());
     }
 
+    public function testCacheControlRejectsArgumentsOnKnownArgumentlessDirectives(): void
+    {
+        foreach (['public', 'no-store', 'no-transform', 'only-if-cached', 'must-revalidate', 'proxy-revalidate', 'must-understand'] as $directive) {
+            self::assertTrue(CacheControl::fromValues([$directive])->isValid(), $directive);
+            self::assertFalse(CacheControl::fromValues([$directive . '=foo'])->isValid(), $directive);
+            self::assertFalse(CacheControl::fromValues([$directive . '=""'])->isValid(), $directive);
+        }
+        // Qualified private/no-cache and unknown extension arguments remain legal.
+        self::assertTrue(CacheControl::fromValues(['private="X-Private", no-cache="X-Test", extension=foo'])->isValid());
+    }
+
     public function testCacheControlRejectsConflictingNumericDirective(): void
     {
         $cacheControl = CacheControl::fromValues(['max-age=60, max-age=120']);
