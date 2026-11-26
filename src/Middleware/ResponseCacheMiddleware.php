@@ -167,9 +167,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             }
             // Stage cache-specific metadata without modifying the response that
             // will be returned when admission or storage fails.
-            $prepared = ResponseMetadata::prepare($response, $policy, $receipt);
+            $prepared = ResponseMetadata::prepare($response, $policy, $receipt)
+                ->withHeader(Header::AGE, (string) $freshness->ageAt($now));
             $storedResponse = $snapshot === null ? $prepared : $prepared->withBody($snapshot);
-            $storedResponse = $storedResponse->withHeader(Header::AGE, (string) $freshness->ageAt($now));
             $stored = $this->store->store($key, $storedResponse, $freshness);
             if ($stored) {
                 $response = $prepared;
