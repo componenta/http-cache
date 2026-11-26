@@ -224,6 +224,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertFalse($store->store('missing-allow', new Response(405), $freshness));
         self::assertFalse($store->store('removed-allow', new Response(405, ['Allow' => 'POST', 'Connection' => 'Allow']), $freshness));
         self::assertFalse($store->store('missing-challenge', new Response(401), $freshness));
+        self::assertFalse($store->store('empty-challenge', new Response(401, ['WWW-Authenticate' => '']), $freshness));
         self::assertSame([], $cache->values);
 
         // An empty Allow field is legal: the resource may have no allowed methods.
