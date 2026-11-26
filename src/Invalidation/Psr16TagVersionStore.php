@@ -108,7 +108,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
 
     private function key(string $tag): string
     {
-        return hash('sha256', $this->prefix . "\0" . $tag);
+        return hash('sha256', "tag\0" . strlen($this->prefix) . ':' . $this->prefix . $tag);
     }
 
     private function nextVersion(string $key): int

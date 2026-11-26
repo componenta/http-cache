@@ -44,7 +44,8 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
             $payload['cookieParams'] = self::encodeParameters($request->getCookieParams());
         }
 
-        return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        return hash('sha256', "response\0" . strlen($this->prefix) . ':' . $this->prefix
+            . json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
     }
 
     /**
