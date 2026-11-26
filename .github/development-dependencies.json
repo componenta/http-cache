@@ -1,32 +1,28 @@
 {
-    "di": {
-        "branch": "fix/callback-dependency-baseline-2026-11-26",
-        "alias": "6.0.x-dev",
-        "commit": "e4f19ab9a9f6bd18da85fc52c8d478433a32baec"
+    "sources": {
+        "di": {
+            "branch": "main",
+            "alias": "6.0.x-dev",
+            "commit": "e203077d12048936f078d37d1cf3badd661e1716"
+        },
+        "router": {
+            "branch": "fix/http-cache-dependency-integration-2026-11-26",
+            "alias": "3.1.x-dev",
+            "commit": "afe53a6b2d58cc235ef177eef6318e93d876350b"
+        },
+        "middleware-factory": {
+            "branch": "refactor/middleware-factory-audit",
+            "alias": "3.0.x-dev",
+            "commit": "a1b4c71718adc6b8741e53f9d01976d8d06aeeeb"
+        },
+        "pipeline": {
+            "branch": "fix/pipeline-audit",
+            "alias": "1.1.x-dev",
+            "commit": "a36d1b02f473587638e1ceaaee1272381948f485"
+        }
     },
-    "router": {
-        "branch": "fix/callback-dependency-baseline-2026-11-26",
-        "alias": "3.0.x-dev",
-        "commit": "8cc184cd44d14857511653e008cfc0a3ee8b0612"
-    },
-    "middleware-factory": {
-        "branch": "fix/callback-dependency-baseline-2026-11-26",
-        "alias": "2.1.x-dev",
-        "commit": "8eb058f32c7ba5939ba20095a5156cdee44d997b"
-    },
-    "http-responder": {
-        "branch": "fix/callback-dependency-baseline-2026-11-26",
-        "alias": "1.0.x-dev",
-        "commit": "6080a95ad9ebed4a659b8025df4ff0edb2d84add"
-    },
-    "pipeline": {
-        "branch": "fix/callback-dependency-baseline-2026-11-26",
-        "alias": "1.0.x-dev",
-        "commit": "1887909eee9aa0ad62d52afe90e686372862af47"
-    },
-    "mimetype-detector": {
-        "branch": "fix/callback-dependency-baseline-2026-11-26",
-        "alias": "1.0.x-dev",
-        "commit": "7bd035263f7ba96e351fbe5cbe3eda19ed7cc135"
+    "releases": {
+        "componenta/http-responder": "^2.0",
+        "componenta/mimetype-detector": "^2.0"
     }
 }

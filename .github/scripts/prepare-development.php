@@ -10,10 +10,14 @@ $manifest = json_decode(file_get_contents($root . '/composer.json'), true, flags
 $dependencies = json_decode(file_get_contents(dirname(__DIR__) . '/development-dependencies.json'), true, flags: JSON_THROW_ON_ERROR);
 $repositories = [];
 
-foreach ($dependencies as $name => $expected) {
+foreach ($dependencies['sources'] as $name => $expected) {
     $path = realpath($dependencyRoot . '/' . $name);
     if ($path === false) {
         throw new RuntimeException('Missing development dependency checkout: ' . $name);
+    }
+    $actual = trim((string) shell_exec('git -C ' . escapeshellarg($path) . ' rev-parse HEAD'));
+    if ($actual !== $expected['commit']) {
+        throw new RuntimeException('Unexpected dependency revision: ' . $name);
     }
     $package = json_decode(file_get_contents($path . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
     $branch = 'dev-' . $expected['branch'];
@@ -25,6 +29,11 @@ foreach ($dependencies as $name => $expected) {
     $manifest['require'][$package['name']] = $branch;
     unset($manifest['require-dev'][$package['name']]);
     $repositories[] = ['type' => 'path', 'url' => $path, 'options' => ['symlink' => true]];
+}
+
+foreach ($dependencies['releases'] as $package => $constraint) {
+    $manifest['require'][$package] = $constraint;
+    unset($manifest['require-dev'][$package]);
 }
 
 $manifest['repositories'] = array_merge($repositories, array_values($manifest['repositories'] ?? []));

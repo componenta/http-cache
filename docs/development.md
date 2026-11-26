@@ -1,25 +1,21 @@
 # Development integration
 
-This branch targets the next HTTP Cache 2.x release line (`2.0.x-dev` for both `dev-main` and the feature branch). The published 1.x line supports PHP 8.4; raising the runtime minimum to PHP 8.5.13 and requiring the current Componenta dependency majors is a breaking baseline change.
+HTTP Cache 2.x requires PHP 8.5.13+, Componenta Config 4, HTTP 1 and Router 3.1 or later within 3.x. The minimum PHP version preserves the native trait callable scope/visibility fix in PHP 8.5.13. These are breaking baseline changes relative to HTTP Cache 1.x.
 
-This branch requires PHP 8.5.13+ and the current Componenta major lines. Its public Composer manifest declares normal semantic constraints. Some current library sources needed small dependency compatibility updates before the complete graph could use Config 4 and DI 6. Until those updates are released, a consumer of this development branch must explicitly select their source branches.
+## Current integration graph
 
-The integration graph uses Config 4.0.0, Reflection 3.0.0, DI 6 development source, Router 3 development source, and HTTP 1.0.0. Pipeline and MIME type detector use compatibility branches based on their latest 1.0.1 sources; selecting those branches explicitly prevents Composer from falling back to 1.0.0 because the published 1.0.1 manifests do not yet permit Config 4. No package is replaced, provided under a false version, or assigned an obsolete major alias. Branch aliases identify the version line of the actual source checkout. Composer's normal solver selects the remaining released transitive dependencies.
+CI installs published Config 4, Reflection 3, HTTP 1, HTTP Responder 2 and MIME Type Detector 2. It uses the actual unreleased sources below for packages that have not yet published a compatible release. No package is replaced, provided under a false version, or assigned a synthetic version alias.
 
-## Pinned source dependencies
+| Package | Source branch | Declared version line | Revision |
+|---|---|---|---|
+| `componenta/di` | `main` | `6.0.x-dev` | [`e203077d1204`](https://github.com/componenta/di/commit/e203077d12048936f078d37d1cf3badd661e1716) |
+| `componenta/router` | `fix/http-cache-dependency-integration-2026-11-26` | `3.1.x-dev` | [`afe53a6b2d58`](https://github.com/componenta/router/commit/afe53a6b2d58cc235ef177eef6318e93d876350b) |
+| `componenta/middleware-factory` | `refactor/middleware-factory-audit` | `3.0.x-dev` | [`a1b4c71718ad`](https://github.com/componenta/middleware-factory/commit/a1b4c71718adc6b8741e53f9d01976d8d06aeeeb) |
+| `componenta/pipeline` | `fix/pipeline-audit` | `1.1.x-dev` | [`a36d1b02f473`](https://github.com/componenta/pipeline/commit/a36d1b02f473587638e1ceaaee1272381948f485) |
 
-Each source dependency below is on `fix/callback-dependency-baseline-2026-11-26`. The immutable revision is the source used for integration verification and CI.
+The Router integration branch adds support for Responder 2 and Middleware Factory 3 without changing its routing API. Its compatibility range is additive; HTTP Cache CI selects the new major lines, not the earlier interim compatibility branches. Publication requires compatible stable Router, Middleware Factory, Pipeline and DI releases.
 
-| Package | Declared source line | Revision |
-|---|---|---|
-| `componenta/di` | `6.0.x-dev` | [`e4f19ab9a9f6`](https://github.com/componenta/di/commit/e4f19ab9a9f6bd18da85fc52c8d478433a32baec) |
-| `componenta/router` | `3.0.x-dev` | [`8cc184cd44d1`](https://github.com/componenta/router/commit/8cc184cd44d14857511653e008cfc0a3ee8b0612) |
-| `componenta/middleware-factory` | `2.1.x-dev` | [`8eb058f32c7b`](https://github.com/componenta/middleware-factory/commit/8eb058f32c7ba5939ba20095a5156cdee44d997b) |
-| `componenta/http-responder` | `1.0.x-dev` | [`6080a95ad9eb`](https://github.com/componenta/http-responder/commit/6080a95ad9ebed4a659b8025df4ff0edb2d84add) |
-| `componenta/pipeline` | `1.0.x-dev` | [`1887909eee9a`](https://github.com/componenta/pipeline/commit/1887909eee9aa0ad62d52afe90e686372862af47) |
-| `componenta/mimetype-detector` | `1.0.x-dev` | [`7bd035263f7b`](https://github.com/componenta/mimetype-detector/commit/7bd035263f7ba96e351fbe5cbe3eda19ed7cc135) |
-
-The machine-readable inventory is [development-dependencies.json](../.github/development-dependencies.json). CI checks out those revisions, restores their actual branch names so Composer can discover their development versions, and generates a separate Composer root. The tracked package manifest remains unchanged by this process.
+The machine-readable inventory is [development-dependencies.json](../.github/development-dependencies.json). The preparation script validates source revisions, names and declared aliases and creates a separate Composer root. It also requires published Responder and MIME Type Detector 2 for development acceptance. The tracked package manifest remains unchanged.
 
 ## Reproduce the integration
 
@@ -27,18 +23,14 @@ From a fresh package checkout with PHP 8.5.13+ and Composer 2:
 
 ```bash
 mkdir -p .development-dependencies
-git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/di.git .development-dependencies/di
-git -C .development-dependencies/di switch -C fix/callback-dependency-baseline-2026-11-26 e4f19ab9a9f6bd18da85fc52c8d478433a32baec
-git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/router.git .development-dependencies/router
-git -C .development-dependencies/router switch -C fix/callback-dependency-baseline-2026-11-26 8cc184cd44d14857511653e008cfc0a3ee8b0612
-git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/middleware-factory.git .development-dependencies/middleware-factory
-git -C .development-dependencies/middleware-factory switch -C fix/callback-dependency-baseline-2026-11-26 8eb058f32c7ba5939ba20095a5156cdee44d997b
-git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/http-responder.git .development-dependencies/http-responder
-git -C .development-dependencies/http-responder switch -C fix/callback-dependency-baseline-2026-11-26 6080a95ad9ebed4a659b8025df4ff0edb2d84add
-git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/pipeline.git .development-dependencies/pipeline
-git -C .development-dependencies/pipeline switch -C fix/callback-dependency-baseline-2026-11-26 1887909eee9aa0ad62d52afe90e686372862af47
-git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/mimetype-detector.git .development-dependencies/mimetype-detector
-git -C .development-dependencies/mimetype-detector switch -C fix/callback-dependency-baseline-2026-11-26 7bd035263f7ba96e351fbe5cbe3eda19ed7cc135
+git clone --branch main https://github.com/componenta/di.git .development-dependencies/di
+git -C .development-dependencies/di switch -C main e203077d12048936f078d37d1cf3badd661e1716
+git clone --branch fix/http-cache-dependency-integration-2026-11-26 https://github.com/componenta/router.git .development-dependencies/router
+git -C .development-dependencies/router switch -C fix/http-cache-dependency-integration-2026-11-26 afe53a6b2d58cc235ef177eef6318e93d876350b
+git clone --branch refactor/middleware-factory-audit https://github.com/componenta/middleware-factory.git .development-dependencies/middleware-factory
+git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit a1b4c71718adc6b8741e53f9d01976d8d06aeeeb
+git clone --branch fix/pipeline-audit https://github.com/componenta/pipeline.git .development-dependencies/pipeline
+git -C .development-dependencies/pipeline switch -C fix/pipeline-audit a36d1b02f473587638e1ceaaee1272381948f485
 php .github/scripts/prepare-development.php
 composer validate --strict
 COMPOSER=.composer-development.json composer update --no-interaction --prefer-dist
@@ -47,14 +39,6 @@ composer check
 COMPOSER=.composer-development.json composer audit
 ```
 
-To use existing checkouts, pass their parent directory to `php .github/scripts/prepare-development.php /path/to/dependencies`. Check out the listed source branch at the listed revision first. The generator checks package names and declared branch aliases, and never supplies Composer `options.versions` overrides. The generated manifest, lock, dependency clones, and vendor directory are local integration artifacts.
+The quality workflow tests PHP 8.5.13 and the current 8.5 patch against both lowest and highest compatible dependencies. The release workflow installs the tracked public manifest without any source overrides and is intentionally blocked until the required compatible stable dependency graph exists.
 
-The workflow checks PHP 8.5.13 and the current PHP 8.5 patch. Its lowest-dependency job resolves the lowest compatible versions within these current major lines while retaining the required source revisions; it does not substitute an older Componenta major.
-
-The separate release workflow installs from the tracked `composer.json`, audits that dependency set, and runs the full test suite and static analysis against it. The development source checkouts and generated manifest are not used for publication. A release therefore remains blocked until compatible dependencies satisfying the public manifest are available as stable releases. The quality workflow continues to verify the pinned development graph.
-
-## Verification scope
-
-The callback tests were introduced against the old public API and failed for the missing capability before implementation. They cover direct calls, native attribute construction, private static first-class callables declared through a shared trait used by two classes, repeated evaluations with current inputs, result validation, and exception boundaries. The full existing test suite remains the preservation control. PHPStan runs at the repository's established maximum level. The package uses PHPUnit 13.4 for its current PHP 8.5 runtime baseline.
-
-PHP 8.5 introduced the constant-expression syntax; [PHP 8.5.13](https://www.php.net/ChangeLog-8.php#8.5.13) fixes the required trait callable scope and visibility behavior. Native closure persistence is not part of this feature.
+The callback specification and its native tests remain mandatory. PHP 8.5 introduced constant-expression callback syntax; [PHP 8.5.13](https://www.php.net/ChangeLog-8.php#8.5.13) fixes the trait callable scope and visibility behavior. Native closure persistence is not part of this feature.

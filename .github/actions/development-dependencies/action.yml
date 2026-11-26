@@ -6,46 +6,32 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: componenta/di
-        ref: e4f19ab9a9f6bd18da85fc52c8d478433a32baec
+        ref: e203077d12048936f078d37d1cf3badd661e1716
         path: .development-dependencies/di
         persist-credentials: false
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: componenta/router
-        ref: 8cc184cd44d14857511653e008cfc0a3ee8b0612
+        ref: afe53a6b2d58cc235ef177eef6318e93d876350b
         path: .development-dependencies/router
         persist-credentials: false
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: componenta/middleware-factory
-        ref: 8eb058f32c7ba5939ba20095a5156cdee44d997b
+        ref: a1b4c71718adc6b8741e53f9d01976d8d06aeeeb
         path: .development-dependencies/middleware-factory
         persist-credentials: false
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
-        repository: componenta/http-responder
-        ref: 6080a95ad9ebed4a659b8025df4ff0edb2d84add
-        path: .development-dependencies/http-responder
-        persist-credentials: false
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
         repository: componenta/pipeline
-        ref: 1887909eee9aa0ad62d52afe90e686372862af47
+        ref: a36d1b02f473587638e1ceaaee1272381948f485
         path: .development-dependencies/pipeline
-        persist-credentials: false
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        repository: componenta/mimetype-detector
-        ref: 7bd035263f7ba96e351fbe5cbe3eda19ed7cc135
-        path: .development-dependencies/mimetype-detector
         persist-credentials: false
     - name: Restore source branch identities and prepare Composer
       shell: bash
       run: |
-        git -C .development-dependencies/di switch -C fix/callback-dependency-baseline-2026-11-26
-        git -C .development-dependencies/router switch -C fix/callback-dependency-baseline-2026-11-26
-        git -C .development-dependencies/middleware-factory switch -C fix/callback-dependency-baseline-2026-11-26
-        git -C .development-dependencies/http-responder switch -C fix/callback-dependency-baseline-2026-11-26
-        git -C .development-dependencies/pipeline switch -C fix/callback-dependency-baseline-2026-11-26
-        git -C .development-dependencies/mimetype-detector switch -C fix/callback-dependency-baseline-2026-11-26
+        git -C .development-dependencies/di switch -C main
+        git -C .development-dependencies/router switch -C fix/http-cache-dependency-integration-2026-11-26
+        git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit
+        git -C .development-dependencies/pipeline switch -C fix/pipeline-audit
         php .github/scripts/prepare-development.php

@@ -6,7 +6,7 @@
     "require": {
         "componenta/config": "^4.0",
         "componenta/http": "^1.0",
-        "componenta/router": "^3.0",
+        "componenta/router": "^3.1",
         "php": "^8.5.13",
         "psr/container": "^2.0",
         "psr/http-factory": "^1.1",
