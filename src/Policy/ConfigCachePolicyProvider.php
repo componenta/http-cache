@@ -10,7 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final readonly class ConfigCachePolicyProvider implements CachePolicyProviderInterface
 {
-    /** @var array<string, HttpCachePolicy> */
+    /** @var array<array-key, HttpCachePolicy> */
     private array $policies;
 
     /**
@@ -21,7 +21,11 @@ final readonly class ConfigCachePolicyProvider implements CachePolicyProviderInt
         $normalized = [];
 
         foreach ($policies as $routeName => $policy) {
-            if (!is_string($routeName) || $routeName === '') {
+            // PHP converts integer-shaped string array keys into integers.
+            // Router names are strings, but a configured map must accept both
+            // representations of the same numeric route name.
+            $routeName = (string) $routeName;
+            if ($routeName === '') {
                 throw new InvalidArgumentException('HTTP cache policy route names must be non-empty strings.');
             }
 

@@ -51,7 +51,7 @@ final class CatalogHandler
 }
 ```
 
-Configured route policies take precedence over attributes. Array settings are validated when the configuration policy provider is constructed, including policies for routes not yet matched. Unknown settings and conflicting snake_case/camelCase aliases are rejected.
+Configured route policies take precedence over attributes. Numeric-string route names are supported, including PHP's conversion of integer-shaped string array keys to integers. Array settings are validated when the configuration policy provider is constructed, including policies for routes not yet matched. Unknown settings and conflicting snake_case/camelCase aliases are rejected.
 
 Only the exact case-sensitive GET and HEAD methods can be served from this cache. Requests with non-empty or unknown-size bodies, non-empty parsed bodies, uploaded files, nonzero Content-Length or Transfer-Encoding bypass caching. PSR-7 uploaded files are independent of the current body stream. Unsafe methods reach the origin handler unless `only-if-cached` is present, in which case this application middleware returns 504 without performing a mutation. This deliberately preserves the application's strict no-origin contract, rather than the unsafe-method write-through rule for generic HTTP intermediaries in RFC 9111 §4. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
 

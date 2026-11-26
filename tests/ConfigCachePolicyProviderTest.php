@@ -41,6 +41,15 @@ final class ConfigCachePolicyProviderTest extends TestCase
         self::assertSame('public, max-age=60', $policy->cacheControlValue());
     }
 
+    public function testNumericStringRouteNameCanBeConfigured(): void
+    {
+        $route = RouteRecord::get(name: '123', path: '/numeric', handler: static fn (): null => null);
+        $match = new MatchResult(name: $route->name, handler: $route->handler, middlewares: $route->middlewares, parameters: [], rr: $route);
+        $request = (new ServerRequest('GET', '/numeric'))->withAttribute(MatchRouteMiddleware::ATTRIBUTE_MATCH_RESULT, $match);
+        $provider = new ConfigCachePolicyProvider(['123' => ['ttl' => 60]]);
+        self::assertSame(60, $provider->policyFor($request)?->ttl);
+    }
+
     public function testInvalidUnmatchedRoutePolicyFailsAtConstruction(): void
     {
         $this->expectException(\InvalidArgumentException::class);
