@@ -572,6 +572,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('Cache-Control'));
     }
 
+    public function testCustomStoreCannotReplayNoContentWithContentLength(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60, statuses: [204]);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 204,
+            headers: ['Content-Length' => ['0']],
+            body: '',
+            storedAt: 990,
+            freshUntil: 1060,
+        ));
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(204)));
+
+        self::assertSame(204, $response->getStatusCode());
+        self::assertFalse($response->hasHeader('Content-Length'));
+    }
+
     public function testHeadResponseWithContentIsNotStored(): void
     {
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));

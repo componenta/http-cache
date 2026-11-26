@@ -71,6 +71,15 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         self::assertNotSame($generator->generate($a, $policy), $generator->generate($b, $policy));
     }
 
+    public function testNonDataRouteParametersCannotProduceCacheKey(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $request = CacheRequest::forHandler('catalog.handler', ['service' => new \stdClass()]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $generator->generate($request, new HttpCachePolicy(ttl: 60));
+    }
+
     public function testParsedQueryParametersPartitionIdenticalWireUris(): void
     {
         $generator = new DefaultCacheKeyGenerator($this->tags());

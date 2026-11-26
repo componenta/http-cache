@@ -250,3 +250,5 @@ The implementation is complete only when R1–R4, I1–I4, and P1–P4 hold toge
 ### Subsequent audit amendments
 
 Parsed PSR-7 query and cookie parameters also partition keys, credential ambiguity and body-dependent requests bypass the cache, malformed Cache-Control and explicitly forbidden RFC 6585 statuses are rejected, and absolute freshness is propagated to the store. These safety changes supersede any earlier statement that the relative store TTL signature is preserved. Callback signatures, invocation timing, precedence, errors, and request-dependent veto semantics are unchanged.
+
+The subsequent framing and route-identity audit adds resolved `MatchResult` parameters to the cache key alongside the route name and URI, and rejects invalid response Content-Length/Transfer-Encoding combinations. The callback contract and persisted response shape remain unchanged.
