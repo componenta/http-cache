@@ -111,7 +111,7 @@ new HttpCachePolicy(
 );
 ```
 
-Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values and parsed PSR-7 cookie parameters. An empty credential field alone cannot enable private caching. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
+Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values and parsed PSR-7 cookie parameters. An empty credential field alone cannot enable private caching. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, removes invalid `Connection` options that would strip `Cache-Control` or `Vary`, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
 
 A private policy without credential partitioning is rejected. A request using a private policy but carrying no credentials bypasses the cache.
 
@@ -136,7 +136,7 @@ It supports:
 - weak `If-None-Match` comparison
 - `If-Modified-Since`
 - RFC age calculation using `Date`, `Age`, request time and response time
-- generated weak SHA-256 ETags for bounded seekable GET bodies
+- generated weak SHA-256 ETags for bounded seekable GET bodies, using length-framed representation metadata and binary content
 
 Origin-only preconditions such as `If-Match` and `If-Unmodified-Since` bypass cache reuse and are forwarded to the origin handler.
 
@@ -152,7 +152,7 @@ The default maximum cached entry size is 8 MiB:
 ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
 ```
 
-The limit applies to stored headers and body. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
+The limit applies to the combined stored headers and body (inclusive, including the header name and delimiter accounting). Oversized entries are rejected on read as well as on write. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
 
 ### Store extension contract (2.x)
 
@@ -174,7 +174,7 @@ Here `$remainingTtl` must already respect origin freshness directives and the ap
 
 ## Invalidation
 
-Application tags can be invalidated through `CacheInvalidatorInterface`. The default PSR-16 implementation validates the entire list before writing, trims surrounding whitespace consistently with policies, and deduplicates equivalent tags. When one backend operation fails, remaining distinct tags are still attempted and the first failure is rethrown. Multi-tag invalidation is not atomic. Custom generation stores must return a generation for every requested tag; incomplete snapshots cause a cache bypass.
+Application tags can be invalidated through `CacheInvalidatorInterface`. The default PSR-16 implementation validates the entire list before writing, trims surrounding whitespace consistently with policies, and deduplicates equivalent tags. When one backend operation fails, remaining distinct tags are still attempted and the first failure is rethrown. Multi-tag invalidation is not atomic. Custom generation stores must return a generation for every requested tag; incomplete snapshots cause a cache bypass. The default `CacheInvalidatorInterface` alias resolves through `TagVersionStoreInterface`, so overriding the generation store automatically redirects default invalidation to the same backend. If both aliases are replaced independently, they must use the same generation namespace.
 
 Target URI generations are also used internally. After a successful unsafe request the target URI generation is changed, making prior GET/HEAD entries unreachable.
 
@@ -182,7 +182,7 @@ Tag generations use portable hashed PSR-16 keys. Reads are batched; missing, evi
 
 ## Failure behavior
 
-If a `Psr\Log\LoggerInterface` service is registered, cache key, read, reconstruction, write and invalidation failures are logged without including request credentials in the log message.
+If a `Psr\Log\LoggerInterface` service is registered, cache key, read, reconstruction, write and invalidation failures are logged with fixed messages and exception context. Configure the logger to redact sensitive exception details when necessary. Logging is best effort; a failing logger cannot replace the origin response or mask a completed mutation.
 
 Request-body inspection, cache lookup, cached-metadata validation and write failures fail open to the origin response. Cache-generated freshness and Vary headers are published only after successful storage; bypasses preserve the original cache directives apart from the enabled private policy's protective rewriting. A validator generated from a complete body may still be returned after a storage failure. If a cache-eligible refresh yields a response that cannot replace a previous entry, the old entry for that exact key is removed; a failed removal is logged. This is conservative eviction, not a 304 metadata merge. A request bypassed by `no-store` or a policy veto does not access or remove existing entries. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
 
