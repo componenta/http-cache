@@ -32,16 +32,16 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
             // the effective-URI invalidation tag.
             'rawPath' => $request->getUri()->getPath(),
             'hostValues' => array_values($request->getHeader(Header::HOST)),
-            'queryParams' => self::validateParameters($request->getQueryParams()),
+            'queryParams' => self::encodeParameters($request->getQueryParams()),
             'route' => $match?->name,
-            'routeParameters' => self::validateParameters($match->parameters ?? []),
+            'routeParameters' => self::encodeParameters($match->parameters ?? []),
             'policy' => $this->policyFingerprint($policy),
             'vary' => $this->varyHeaders($request, $policy),
             'tags' => $this->tagGenerations($tags),
         ];
 
         if ($policy->private) {
-            $payload['cookieParams'] = self::validateParameters($request->getCookieParams());
+            $payload['cookieParams'] = self::encodeParameters($request->getCookieParams());
         }
 
         return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
@@ -70,24 +70,36 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
      * PHP's parsed request parameters are independent of the wire URI/headers.
      * Reject non-data objects/resources and recursive/excessively deep arrays
      * instead of calling arbitrary serialization code during key generation.
+     * Type-tag arrays and floating-point values before JSON encoding to preserve
+     * exact numeric identity regardless of the process serialization settings.
      *
      * @param array<array-key, mixed> $parameters
      * @return array<array-key, mixed>
      */
-    private static function validateParameters(array $parameters, int $depth = 0): array
+    private static function encodeParameters(array $parameters, int $depth = 0): array
     {
         if ($depth >= 32) {
             throw new InvalidArgumentException('HTTP cache request parameters exceed the supported nesting depth.');
         }
-        foreach ($parameters as $value) {
+        $encoded = [];
+        foreach ($parameters as $key => $value) {
             if (is_array($value)) {
-                self::validateParameters($value, $depth + 1);
-            } elseif ($value !== null && !is_scalar($value)) {
+                $encoded[$key] = ['array', self::encodeParameters($value, $depth + 1)];
+            } elseif (is_float($value)) {
+                if (!is_finite($value)) {
+                    throw new InvalidArgumentException('HTTP cache request parameters must contain finite numbers.');
+                }
+                // Exact IEEE 754 bytes, independent of PHP serialize_precision.
+                // Arrays use a distinct envelope so user data cannot alias this tag.
+                $encoded[$key] = ['float', bin2hex(pack('E', $value))];
+            } elseif ($value === null || is_scalar($value)) {
+                $encoded[$key] = $value;
+            } else {
                 throw new InvalidArgumentException('HTTP cache request parameters must contain scalar data or arrays.');
             }
         }
 
-        return $parameters;
+        return $encoded;
     }
 
     /**
