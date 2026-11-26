@@ -44,7 +44,17 @@
         "bench": "@php vendor/bin/phpbench run --report=aggregate"
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "policy": {
+            "abandoned": {
+                "ignore": {
+                    "doctrine/annotations": {
+                        "on-block": false,
+                        "reason": "Transitive development-only dependency required by PHPBench 1.7; benchmarks use native attributes. No security advisory exemption."
+                    }
+                }
+            }
+        }
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
