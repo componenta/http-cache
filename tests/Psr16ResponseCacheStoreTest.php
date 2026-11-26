@@ -597,7 +597,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
         $backend = $this->createMock(\Psr\SimpleCache\CacheInterface::class);
-        $backend->expects(self::once())->method('set')->with('key', self::isType('array'), 1)->willReturnCallback(
+        $backend->expects(self::once())->method('set')->with('key', self::callback(static fn (mixed $payload): bool => is_array($payload)), 1)->willReturnCallback(
             static function () use ($clock): bool {
                 $clock->advance(1);
                 return true;
