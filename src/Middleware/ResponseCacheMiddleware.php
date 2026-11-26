@@ -260,6 +260,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             || $request->hasHeader(Header::TRANSFER_ENCODING)
             || !ResponseEligibility::matchesContentLength($request->getHeader(Header::CONTENT_LENGTH), 0)
             || $request->getBody()->getSize() !== 0
+            || $request->getUploadedFiles() !== []
             || ($request->getParsedBody() !== null && $request->getParsedBody() !== [])
         ) {
             return false;
