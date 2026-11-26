@@ -648,6 +648,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testInvalidCustomStoreMetadataCannotBreakOriginFallback(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: [],
+            body: 'invalid',
+            storedAt: 990,
+            freshUntil: PHP_INT_MIN,
+        ));
+
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
     public function testMinFreshRejectsEntryWithoutEnoughRemainingFreshness(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
@@ -718,6 +737,24 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame($body, $result->getBody());
         self::assertFalse($result->hasHeader('ETag'));
         self::assertFalse($result->hasHeader('Cache-Control'));
+    }
+
+    public function testRequestBodyInspectionFailureBypassesCacheWithoutInvokingBackend(): void
+    {
+        $policies = $this->policyProvider(new HttpCachePolicy(ttl: 60));
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $body = $this->createStub(\Psr\Http\Message\StreamInterface::class);
+        $body->method('getSize')->willThrowException(new RuntimeException('unavailable size'));
+        $request = (new ServerRequest('GET', 'https://example.test/items'))->withBody($body);
+
+        $response = $this->middleware($policies, $keys, $store, $this->createStub(CacheInvalidatorInterface::class))
+            ->process($request, $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
     }
 
     public function testIncompleteContentLengthIsNotStoredEvenWithOriginEtag(): void

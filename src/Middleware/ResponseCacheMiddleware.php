@@ -68,7 +68,18 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
         $policy = $this->policies->policyFor($request);
 
-        if ($policy === null || !$policy->enabled || !$this->isRequestCacheable($request, $policy, $cacheControl)) {
+        // User policy callbacks are deliberately evaluated outside the cache
+        // fallback. Request-body inspection, in contrast, is only an optimization.
+        $eligible = false;
+        if ($policy !== null && $policy->enabled) {
+            try {
+                $eligible = $this->isRequestCacheable($request, $policy, $cacheControl);
+            } catch (Throwable $exception) {
+                $this->logger?->warning('HTTP cache request inspection failed.', ['exception' => $exception]);
+            }
+        }
+
+        if ($policy === null || !$policy->enabled || !$eligible) {
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
                 : ResponseMetadata::protectPrivate($handler->handle($request), $policy);
@@ -95,9 +106,11 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $cached = null;
             }
 
-            if ($cached !== null && $this->requestAcceptsCachedResponse($request, $cached, $policy, $cacheControl)) {
+            if ($cached !== null) {
                 try {
-                    return ResponseMetadata::protectPrivate($this->cachedResponse($request, $cached), $policy);
+                    if ($this->requestAcceptsCachedResponse($request, $cached, $policy, $cacheControl)) {
+                        return ResponseMetadata::protectPrivate($this->cachedResponse($request, $cached), $policy);
+                    }
                 } catch (Throwable $exception) {
                     $this->logger?->warning('HTTP cached response reconstruction failed.', ['exception' => $exception]);
                     $cached = null;
