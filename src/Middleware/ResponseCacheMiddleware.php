@@ -110,8 +110,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             if ($cached !== null) {
                 try {
-                    if ($this->requestAcceptsCachedResponse($request, $cached, $policy, $cacheControl)) {
-                        return ResponseMetadata::protectPrivate($this->cachedResponse($request, $cached), $policy);
+                    $response = $this->tryCachedResponse($request, $cached, $policy, $cacheControl);
+                    if ($response !== null) {
+                        return $response;
                     }
                 } catch (Throwable $exception) {
                     $this->reportFailure('HTTP cached response reconstruction failed.', $exception);
@@ -228,12 +229,29 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    private function cachedResponse(ServerRequestInterface $request, CachedResponse $cached): ResponseInterface
-    {
-        $now = $this->clock->now()->getTimestamp();
-        $response = ConditionalRequest::isNotModified($request, $cached, $now)
+    private function tryCachedResponse(
+        ServerRequestInterface $request,
+        CachedResponse $cached,
+        HttpCachePolicy $policy,
+        CacheControl $cacheControl,
+    ): ?ResponseInterface {
+        $selectedAt = $this->clock->now()->getTimestamp();
+        if (!$this->requestAcceptsCachedResponse($request, $cached, $policy, $cacheControl, $selectedAt)) {
+            return null;
+        }
+
+        $response = ConditionalRequest::isNotModified($request, $cached, $selectedAt)
             ? $this->notModifiedResponse($cached)
             : $cached->toResponse($this->responseFactory, $this->streamFactory);
+        $response = ResponseMetadata::protectPrivate($response, $policy);
+
+        // Factories and streams may perform work or suspend. Do not publish an
+        // expired hit or an age measured before response reconstruction.
+        $now = $this->clock->now()->getTimestamp();
+        if ($now < $selectedAt || ($now !== $selectedAt
+            && !$this->requestAcceptsCachedResponse($request, $cached, $policy, $cacheControl, $now))) {
+            return null;
+        }
 
         return $this->withDebugHeader($response->withHeader(Header::AGE, (string) $cached->age($now)), 'HIT');
     }
@@ -299,6 +317,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         CachedResponse $cached,
         HttpCachePolicy $policy,
         CacheControl $cacheControl,
+        int $now,
     ): bool {
         $maxAge = $cacheControl->integer('max-age');
         $minFresh = $cacheControl->integer('min-fresh');
@@ -307,7 +326,6 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
-        $now = $this->clock->now()->getTimestamp();
         if ($cached->storedAt < 0 || $cached->storedAt > $now || $cached->ageAtStore < 0
             || !CacheableStatus::allows($cached->status)
             || !EntrySize::fits($cached->headers, $cached->body, $this->maxEntryBytes)) {
