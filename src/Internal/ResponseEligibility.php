@@ -183,12 +183,13 @@ final class ResponseEligibility
         }
 
         // Connection-specific fields may be discarded, but never discard metadata
-        // needed to determine cache safety or the identity of a representation.
+        // needed for cache safety, representation identity, redirects or authentication challenges.
         foreach (HeaderList::split($response->getHeader(Header::CONNECTION)) as $field) {
             if (in_array(strtolower($field), [
                 'cache-control', 'age', 'date', 'expires', 'vary', 'etag',
                 'last-modified', 'content-length', 'content-type', 'content-encoding',
                 'content-language', 'content-location', 'content-digest',
+                'location', 'www-authenticate',
             ], true)) {
                 return false;
             }
