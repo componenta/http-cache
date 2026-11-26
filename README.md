@@ -111,7 +111,7 @@ new HttpCachePolicy(
 );
 ```
 
-Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values and parsed PSR-7 cookie parameters. An empty credential field alone cannot enable private caching. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, removes invalid `Connection` options that would strip `Cache-Control` or `Vary`, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
+Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values and parsed PSR-7 cookie parameters. Credential fields containing only empty or whitespace-only values (including multiple field values) cannot enable private caching. This is a partitioning check, not authentication or validation of the credentials. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, removes invalid `Connection` options that would strip `Cache-Control` or `Vary`, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
 
 A private policy without credential partitioning is rejected. A request using a private policy but carrying no credentials bypasses the cache.
 

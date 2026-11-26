@@ -196,10 +196,11 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('CDN-Cache-Control'));
     }
 
-    public function testEmptyCredentialHeadersDoNotEnablePrivateCaching(): void
+    /** @param array<string, list<string>> $headers */
+    #[DataProvider('emptyCredentialHeaders')]
+    public function testEmptyCredentialHeadersDoNotEnablePrivateCaching(array $headers): void
     {
-        $request = (new ServerRequest('GET', 'https://example.test/account'))
-            ->withHeader('Authorization', '');
+        $request = new ServerRequest('GET', 'https://example.test/account', $headers);
         $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
         $policies = $this->policyProvider($policy);
         $keys = $this->createMock(CacheKeyGeneratorInterface::class);
@@ -213,6 +214,15 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process($request, $handler);
 
         self::assertSame('origin', (string) $response->getBody());
+    }
+
+    /** @return iterable<string, array{array<string, list<string>>}> */
+    public static function emptyCredentialHeaders(): iterable
+    {
+        yield 'empty authorization' => [['Authorization' => ['']]];
+        yield 'multiple empty authorization values' => [['Authorization' => ['', '']]];
+        yield 'multiple empty cookie values' => [['Cookie' => ['', '']]];
+        yield 'only whitespace in credentials' => [['Authorization' => [' ', "\t"], 'Cookie' => ['', ' ']]];
     }
 
     public function testMalformedPrivateOriginCacheControlIsReplacedByNoStore(): void

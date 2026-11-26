@@ -463,9 +463,21 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function hasCredentials(ServerRequestInterface $request): bool
     {
-        return $request->getHeaderLine(Header::AUTHORIZATION) !== ''
-            || $request->getHeaderLine(Header::COOKIE) !== ''
-            || $request->getCookieParams() !== [];
+        if ($request->getCookieParams() !== []) {
+            return true;
+        }
+
+        // PSR-7 getHeaderLine joins multiple values with commas. Separators
+        // between empty field values are not credentials.
+        foreach ([Header::AUTHORIZATION, Header::COOKIE] as $field) {
+            foreach ($request->getHeader($field) as $value) {
+                if (trim($value, " \t") !== '') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function isUnsafeMethod(string $method): bool
