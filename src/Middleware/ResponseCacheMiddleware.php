@@ -161,11 +161,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $receipt = (int) $responseTime;
             $freshness = CacheFreshness::fromTtl($receipt, $ttl, $initialAge);
             $snapshot = null;
+            $contents = null;
 
             $bodyless = $request->getMethod() === HttpMethod::HEAD || CacheableStatus::forbidsContent($response->getStatusCode());
             $generateEtag = !$bodyless && $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);
             $validateLength = $request->getMethod() === HttpMethod::GET && $response->hasHeader(Header::CONTENT_LENGTH);
-            if ($bodyless || $generateEtag || $validateLength) {
+            if ($bodyless || $generateEtag || $validateLength || $response->getBody()->getSize() === null) {
                 $contents = BodySnapshot::read($response->getBody(), $bodyless ? 0 : $this->maxEntryBytes);
                 if ($contents === null || ($bodyless && $contents !== '') || ($validateLength && !ResponseEligibility::matchesContentLength($response->getHeader(Header::CONTENT_LENGTH), strlen($contents)))) {
                     return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
@@ -184,6 +185,18 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             // will be returned when admission or storage fails.
             $prepared = ResponseMetadata::prepare($response, $policy, $receipt)
                 ->withHeader(Header::AGE, (string) $freshness->ageAt($now));
+            // Enforce the middleware's own limit independently of the adapter.
+            // Count precisely the headers retained by the standard store, not
+            // discarded hop-by-hop fields, including generated metadata.
+            $bodyBudget = EntrySize::remainingBodyBudget(
+                StoredHeaders::forStorage($prepared),
+                $this->maxEntryBytes,
+            );
+            $bodySize = $contents === null ? $response->getBody()->getSize() : strlen($contents);
+            if ($bodyBudget === null || $bodySize === null || $bodySize < 0 || $bodySize > $bodyBudget) {
+                return $this->withDebugHeader(ResponseMetadata::protectPolicy($response, $policy), 'BYPASS');
+            }
+
             $storedResponse = $snapshot === null ? $prepared : $prepared->withBody($snapshot);
             $stored = $this->store->store($key, $storedResponse, $freshness);
             if ($stored) {

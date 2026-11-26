@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Cache\Internal;
 
+use Componenta\Http\Cache\Protocol\HeaderList;
+use Componenta\Http\Header;
+use Psr\Http\Message\ResponseInterface;
+
 /** @internal */
 final class StoredHeaders
 {
@@ -46,6 +50,41 @@ final class StoredHeaders
         }
 
         return $normalized;
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public static function forStorage(ResponseInterface $response): array
+    {
+        $blocked = [
+            strtolower(Header::CONNECTION) => true,
+            strtolower(Header::KEEP_ALIVE) => true,
+            strtolower(Header::PROXY_AUTHENTICATE) => true,
+            'proxy-authentication-info' => true,
+            strtolower(Header::PROXY_AUTHORIZATION) => true,
+            'proxy-connection' => true,
+            strtolower(Header::TE) => true,
+            strtolower(Header::TRAILER) => true,
+            strtolower(Header::TRANSFER_ENCODING) => true,
+            strtolower(Header::UPGRADE) => true,
+        ];
+
+        foreach (HeaderList::split(array_values($response->getHeader(Header::CONNECTION))) as $name) {
+            $blocked[strtolower($name)] = true;
+        }
+
+        $headers = [];
+
+        foreach ($response->getHeaders() as $name => $values) {
+            if (!is_string($name) || isset($blocked[strtolower($name)])) {
+                continue;
+            }
+
+            $headers[$name] = array_values($values);
+        }
+
+        return $headers;
     }
 
     private function __construct() {}

@@ -9,8 +9,7 @@ use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Internal\EntrySize;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
-use Componenta\Http\Cache\Protocol\HeaderList;
-use Componenta\Http\Header;
+use Componenta\Http\Cache\Internal\StoredHeaders;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -69,7 +68,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return false;
         }
 
-        $headers = $this->storableHeaders($response);
+        $headers = StoredHeaders::forStorage($response);
         $bodyBudget = EntrySize::remainingBodyBudget($headers, $this->maxEntryBytes);
         if ($bodyBudget === null) {
             return false;
@@ -109,41 +108,6 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         if (!$this->cache->delete($key)) {
             throw new RuntimeException('HTTP cache entry could not be removed.');
         }
-    }
-
-    /**
-     * @return array<string, list<string>>
-     */
-    private function storableHeaders(ResponseInterface $response): array
-    {
-        $blocked = [
-            strtolower(Header::CONNECTION) => true,
-            strtolower(Header::KEEP_ALIVE) => true,
-            strtolower(Header::PROXY_AUTHENTICATE) => true,
-            'proxy-authentication-info' => true,
-            strtolower(Header::PROXY_AUTHORIZATION) => true,
-            'proxy-connection' => true,
-            strtolower(Header::TE) => true,
-            strtolower(Header::TRAILER) => true,
-            strtolower(Header::TRANSFER_ENCODING) => true,
-            strtolower(Header::UPGRADE) => true,
-        ];
-
-        foreach (HeaderList::split(array_values($response->getHeader(Header::CONNECTION))) as $name) {
-            $blocked[strtolower($name)] = true;
-        }
-
-        $headers = [];
-
-        foreach ($response->getHeaders() as $name => $values) {
-            if (!is_string($name) || isset($blocked[strtolower($name)])) {
-                continue;
-            }
-
-            $headers[$name] = array_values($values);
-        }
-
-        return $headers;
     }
 
     /**
