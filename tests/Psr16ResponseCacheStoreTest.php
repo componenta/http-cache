@@ -251,6 +251,31 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertNull($store->fetch('key'));
     }
 
+    public function testExactHeaderByteLimitDoesNotHideAdditionalHeaders(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache();
+        $backend->values['key'] = [
+            'status' => 200,
+            'headers' => ['X' => [''], 'Y' => ['']],
+            'body' => '',
+            'storedAt' => 1000,
+            'ageAtStore' => 0,
+            'freshUntil' => 1060,
+        ];
+        $store = new Psr16ResponseCacheStore($backend, maxEntryBytes: 5, clock: $clock);
+
+        self::assertNull($store->fetch('key'));
+    }
+
+    public function testExactEntryByteLimitIsAcceptedForEmptyBody(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = new Psr16ResponseCacheStore(new InMemoryCache(), maxEntryBytes: 5, clock: $clock);
+        self::assertTrue($store->store('key', new Response(200, ['X' => '']), CacheFreshness::fromTtl(1000, 60)));
+        self::assertSame('', $store->fetch('key')?->body);
+    }
+
     public function testRejectsOversizedCachedPayloadOnRead(): void
     {
         $cache = new InMemoryCache();

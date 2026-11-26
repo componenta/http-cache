@@ -11,6 +11,8 @@ use Componenta\DI\ContainerFactory;
 use Componenta\Http\Cache\ConfigKey;
 use Componenta\Http\Cache\ConfigProvider;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
+use Componenta\Http\Cache\Invalidation\Psr16TagVersionStore;
+use Componenta\Http\Cache\Invalidation\TagVersionStoreInterface;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
 use Componenta\Http\Cache\Tests\Fixture\CacheRequest;
 use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
@@ -151,7 +153,29 @@ final class CachePipelineTest extends TestCase
         self::assertSame('body independent', (string) $cache->process($request, $origin)->getBody());
     }
 
-    private function container(bool $private): \Psr\Container\ContainerInterface
+    public function testCustomGenerationStoreAlsoReceivesDefaultInvalidation(): void
+    {
+        $generations = new Psr16TagVersionStore(new InMemoryCache());
+        $container = $this->container(private: false, generations: $generations);
+        $cache = $container->get(ResponseCacheMiddleware::class);
+        self::assertInstanceOf(ResponseCacheMiddleware::class, $cache);
+        self::assertSame($generations, $container->get(TagVersionStoreInterface::class));
+        self::assertSame($generations, $container->get(CacheInvalidatorInterface::class));
+
+        $request = CacheRequest::forHandler('catalog.handler');
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::exactly(3))->method('handle')->willReturnOnConsecutiveCalls(
+            new Response(200, [], 'old'),
+            new Response(204),
+            new Response(200, [], 'new'),
+        );
+        self::assertSame('old', (string) $cache->process($request, $origin)->getBody());
+        self::assertSame('HIT', $cache->process($request, $origin)->getHeaderLine('X-Componenta-Cache'));
+        self::assertSame(204, $cache->process($request->withMethod('PUT'), $origin)->getStatusCode());
+        self::assertSame('new', (string) $cache->process($request, $origin)->getBody());
+    }
+
+    private function container(bool $private, ?TagVersionStoreInterface $generations = null): \Psr\Container\ContainerInterface
     {
         $psr17 = new Psr17Factory();
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
@@ -169,7 +193,9 @@ final class CachePipelineTest extends TestCase
                 ],
                 ConfigKey::DEBUG_HEADER => true,
                 DependencyKey::DEPENDENCIES => [
+                    DependencyKey::ALIASES => $generations === null ? [] : [TagVersionStoreInterface::class => 'test.generations'],
                     DependencyKey::SERVICES => [
+                        ...($generations === null ? [] : ['test.generations' => $generations]),
                         CacheInterface::class => new InMemoryCache(),
                         ClockInterface::class => $clock,
                         ResponseFactoryInterface::class => $psr17,

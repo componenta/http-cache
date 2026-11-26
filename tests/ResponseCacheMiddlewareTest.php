@@ -478,6 +478,29 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertStringContainsString('cookie', strtolower($response->getHeaderLine('Vary')));
     }
 
+    public function testGeneratedEtagSeparatesMetadataFromBinaryContent(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        $request = new ServerRequest('GET', 'https://example.test/resource');
+        $digest = 'sha-256=:YWJj:';
+        [$policiesA, $keysA, $storeA, $invalidatorA] = $this->cacheMissDependencies($policy);
+        $storeA->expects(self::once())->method('store')->willReturn(true);
+        $withDigest = $this->middleware($policiesA, $keysA, $storeA, $invalidatorA)->process(
+            $request,
+            $this->handler(new Response(200, ['Content-Digest' => $digest], 'body')),
+        );
+        [$policiesB, $keysB, $storeB, $invalidatorB] = $this->cacheMissDependencies($policy);
+        $storeB->expects(self::once())->method('store')->willReturn(true);
+        $binary = $this->middleware($policiesB, $keysB, $storeB, $invalidatorB)->process(
+            $request,
+            $this->handler(new Response(200, [], $digest . "\0body")),
+        );
+
+        self::assertNotSame('', $withDigest->getHeaderLine('ETag'));
+        self::assertNotSame('', $binary->getHeaderLine('ETag'));
+        self::assertNotSame($withDigest->getHeaderLine('ETag'), $binary->getHeaderLine('ETag'));
+    }
+
     public function testGeneratedEtagIncludesRepresentationMetadata(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);
