@@ -11,6 +11,12 @@ final class EntityTag
      */
     public static function ifNoneMatch(array $ifNoneMatchValues, ?string $current): bool
     {
+        // The wildcard is an alternative to an entity-tag list, not a list
+        // member. Empty members may be ignored for lists of tags only.
+        if (trim(implode(',', $ifNoneMatchValues), " \t") === '*') {
+            return true;
+        }
+
         // Entity-tag opaque values are not quoted-string: backslash is literal.
         $candidates = self::splitTags($ifNoneMatchValues);
 
@@ -19,7 +25,7 @@ final class EntityTag
         }
 
         if (in_array('*', $candidates, true)) {
-            return count($candidates) === 1;
+            return false;
         }
 
         foreach ($candidates as $candidate) {

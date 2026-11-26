@@ -156,6 +156,18 @@ final class ProtocolTest extends TestCase
         self::assertFalse(EntityTag::ifNoneMatch(['*, "abc"'], 'W/"abc"'));
     }
 
+    public function testIfNoneMatchWildcardMustBeTheEntireFieldValue(): void
+    {
+        self::assertTrue(EntityTag::ifNoneMatch([" \t* \t"], null));
+        foreach ([['*,'], [',*'], [',*,'], ['*', ''], ['', '*'], ['*', '*']] as $values) {
+            self::assertFalse(EntityTag::ifNoneMatch($values, '"abc"'));
+            self::assertFalse(EntityTag::ifNoneMatch($values, null));
+        }
+        // Empty list members are still tolerated for actual entity-tag lists.
+        self::assertTrue(EntityTag::ifNoneMatch([', "abc",'], 'W/"abc"'));
+        self::assertTrue(EntityTag::ifNoneMatch(['"*"'], '"*"'));
+    }
+
     public function testIfNoneMatchRejectsMalformedTagList(): void
     {
         self::assertFalse(EntityTag::ifNoneMatch(['"abc", malformed'], 'W/"abc"'));

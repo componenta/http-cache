@@ -595,6 +595,31 @@ final class ResponseCacheMiddlewareTest extends TestCase
         yield 'head not modified' => ['HEAD', $condition, $validator, 304];
     }
 
+    public function testMalformedWildcardDoesNotProduceNotModifiedResponse(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Date' => [HttpDate::format(1000)], 'Cache-Control' => ['public, max-age=60'], 'ETag' => ['"abc"']],
+            body: 'body',
+            storedAt: 1000,
+            freshUntil: 1060,
+        ));
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::never())->method('handle');
+        $response = $this->middleware(
+            $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            clock: $clock,
+        )->process(new ServerRequest('GET', 'https://example.test/items', ['If-None-Match' => '*,']), $origin);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('body', (string) $response->getBody());
+    }
+
     public function testIfNoneMatchUsesWeakComparisonAndBuildsRfc304Metadata(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
