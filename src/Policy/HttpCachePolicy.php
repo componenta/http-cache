@@ -82,7 +82,7 @@ final readonly class HttpCachePolicy
 
     public function allowsMethod(string $method): bool
     {
-        return in_array(strtoupper($method), $this->methods, true);
+        return in_array($method, $this->methods, true);
     }
 
     public function allowsStatus(int $status): bool

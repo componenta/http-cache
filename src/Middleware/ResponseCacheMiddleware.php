@@ -50,11 +50,14 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if ($this->isUnsafeMethod($request->getMethod())) {
-            return $this->handleUnsafe($request, $handler);
-        }
+        $cacheControl = $this->requestCacheControl($request);
+        $onlyIfCached = $cacheControl->has('only-if-cached');
 
-        $onlyIfCached = $this->requestCacheControl($request)->has('only-if-cached');
+        if ($this->isUnsafeMethod($request->getMethod())) {
+            return $onlyIfCached
+                ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
+                : $this->handleUnsafe($request, $handler);
+        }
         $policy = $this->policies->policyFor($request);
 
         if ($policy === null || !$policy->enabled || !$this->isRequestCacheable($request, $policy)) {
@@ -377,7 +380,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         if (
             $policy->generateEtag
-            && strtoupper($request->getMethod()) === HttpMethod::GET
+            && $request->getMethod() === HttpMethod::GET
             && !$response->hasHeader(Header::ETAG)
         ) {
             $etag = $this->weakEtag($response);
@@ -583,7 +586,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function isUnsafeMethod(string $method): bool
     {
-        return !HttpMethod::isSafe($method);
+        return !in_array($method, ['GET', 'HEAD', 'OPTIONS', 'TRACE'], true);
     }
 
     private function withDebugHeader(ResponseInterface $response, string $status): ResponseInterface

@@ -45,6 +45,46 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame(204, $response->getStatusCode());
     }
 
+    public function testOnlyIfCachedUnsafeRequestDoesNotExecuteOrigin(): void
+    {
+        $policies = $this->createMock(CachePolicyProviderInterface::class);
+        $policies->expects(self::never())->method('policyFor');
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator->expects(self::never())->method('invalidateTags');
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+        $request = (new ServerRequest('PUT', 'https://example.test/items/42'))
+            ->withHeader('Cache-Control', 'only-if-cached');
+
+        self::assertSame(504, $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler)->getStatusCode());
+    }
+
+    public function testNonstandardLowercaseMethodIsNeverServedFromCache(): void
+    {
+        $request = $this->createStub(\Psr\Http\Message\ServerRequestInterface::class);
+        $request->method('getMethod')->willReturn('get');
+        $request->method('getHeader')->willReturn([]);
+        $request->method('getHeaderLine')->willReturn('');
+        $request->method('getUri')->willReturn(new \Nyholm\Psr7\Uri('https://example.test/items'));
+        $request->method('getRequestTarget')->willReturn('/items');
+        $policies = $this->createMock(CachePolicyProviderInterface::class);
+        $policies->expects(self::never())->method('policyFor');
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $invalidator = $this->createMock(CacheInvalidatorInterface::class);
+        $invalidator->expects(self::once())->method('invalidateTags');
+        $handler = $this->handler(new Response(200, [], 'origin'));
+
+        self::assertSame('origin', (string) $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler)->getBody());
+    }
+
     public function testUndeclaredResponseVaryIsNotCached(): void
     {
         $request = new ServerRequest('GET', 'https://example.test/articles');

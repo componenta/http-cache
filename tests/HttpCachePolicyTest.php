@@ -50,6 +50,14 @@ final class HttpCachePolicyTest extends TestCase
         yield 'not modified' => [304];
     }
 
+    public function testWireMethodsAreCaseSensitive(): void
+    {
+        $policy = new HttpCachePolicy(ttl: 60);
+        self::assertTrue($policy->allowsMethod('GET'));
+        self::assertFalse($policy->allowsMethod('get'));
+        self::assertFalse($policy->allowsMethod('head'));
+    }
+
     public function testAuthenticatedCachingRequiresPrivatePolicy(): void
     {
         $this->expectException(InvalidArgumentException::class);
