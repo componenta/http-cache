@@ -1446,8 +1446,10 @@ final class ResponseCacheMiddlewareTest extends TestCase
         );
 
         self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
-        self::assertSame('body', $store->fetch('cache-key')?->body);
-        self::assertArrayNotHasKey('X-Transient', $store->fetch('cache-key')?->headers ?? []);
+        $cached = $store->fetch('cache-key');
+        self::assertNotNull($cached);
+        self::assertSame('body', $cached->body);
+        self::assertArrayNotHasKey('X-Transient', $cached->headers);
     }
 
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
