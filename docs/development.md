@@ -4,7 +4,7 @@ This branch targets the next HTTP Cache 2.x release line (`2.0.x-dev` for both `
 
 This branch requires PHP 8.5.13+ and the current Componenta major lines. Its public Composer manifest declares normal semantic constraints. Some current library sources needed small dependency compatibility updates before the complete graph could use Config 4 and DI 6. Until those updates are released, a consumer of this development branch must explicitly select their source branches.
 
-The integration graph uses Config 4.0.0, Reflection 3.0.0, DI 6 development source, Router 3 development source, and HTTP 1.0.0. No package is replaced, provided under a false version, or assigned an obsolete major alias. Branch aliases identify the version line of the actual source checkout. Composer's normal solver selects released transitive dependencies.
+The integration graph uses Config 4.0.0, Reflection 3.0.0, DI 6 development source, Router 3 development source, and HTTP 1.0.0. Pipeline and MIME type detector use compatibility branches based on their latest 1.0.1 sources; selecting those branches explicitly prevents Composer from falling back to 1.0.0 because the published 1.0.1 manifests do not yet permit Config 4. No package is replaced, provided under a false version, or assigned an obsolete major alias. Branch aliases identify the version line of the actual source checkout. Composer's normal solver selects the remaining released transitive dependencies.
 
 ## Pinned source dependencies
 
@@ -12,10 +12,12 @@ Each source dependency below is on `fix/callback-dependency-baseline-2026-11-26`
 
 | Package | Declared source line | Revision |
 |---|---|---|
-| `componenta/di` | `6.0.x-dev` | [`ded9a6dc44db`](https://github.com/componenta/di/commit/ded9a6dc44db2775c4753e73d9581d70caac6043) |
+| `componenta/di` | `6.0.x-dev` | [`e4f19ab9a9f6`](https://github.com/componenta/di/commit/e4f19ab9a9f6bd18da85fc52c8d478433a32baec) |
 | `componenta/router` | `3.0.x-dev` | [`8cc184cd44d1`](https://github.com/componenta/router/commit/8cc184cd44d14857511653e008cfc0a3ee8b0612) |
 | `componenta/middleware-factory` | `2.1.x-dev` | [`8eb058f32c7b`](https://github.com/componenta/middleware-factory/commit/8eb058f32c7ba5939ba20095a5156cdee44d997b) |
 | `componenta/http-responder` | `1.0.x-dev` | [`6080a95ad9eb`](https://github.com/componenta/http-responder/commit/6080a95ad9ebed4a659b8025df4ff0edb2d84add) |
+| `componenta/pipeline` | `1.0.x-dev` | [`1887909eee9a`](https://github.com/componenta/pipeline/commit/1887909eee9aa0ad62d52afe90e686372862af47) |
+| `componenta/mimetype-detector` | `1.0.x-dev` | [`7bd035263f7b`](https://github.com/componenta/mimetype-detector/commit/7bd035263f7ba96e351fbe5cbe3eda19ed7cc135) |
 
 The machine-readable inventory is [development-dependencies.json](../.github/development-dependencies.json). CI checks out those revisions, restores their actual branch names so Composer can discover their development versions, and generates a separate Composer root. The tracked package manifest remains unchanged by this process.
 
@@ -26,13 +28,17 @@ From a fresh package checkout with PHP 8.5.13+ and Composer 2:
 ```bash
 mkdir -p .development-dependencies
 git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/di.git .development-dependencies/di
-git -C .development-dependencies/di switch -C fix/callback-dependency-baseline-2026-11-26 ded9a6dc44db2775c4753e73d9581d70caac6043
+git -C .development-dependencies/di switch -C fix/callback-dependency-baseline-2026-11-26 e4f19ab9a9f6bd18da85fc52c8d478433a32baec
 git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/router.git .development-dependencies/router
 git -C .development-dependencies/router switch -C fix/callback-dependency-baseline-2026-11-26 8cc184cd44d14857511653e008cfc0a3ee8b0612
 git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/middleware-factory.git .development-dependencies/middleware-factory
 git -C .development-dependencies/middleware-factory switch -C fix/callback-dependency-baseline-2026-11-26 8eb058f32c7ba5939ba20095a5156cdee44d997b
 git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/http-responder.git .development-dependencies/http-responder
 git -C .development-dependencies/http-responder switch -C fix/callback-dependency-baseline-2026-11-26 6080a95ad9ebed4a659b8025df4ff0edb2d84add
+git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/pipeline.git .development-dependencies/pipeline
+git -C .development-dependencies/pipeline switch -C fix/callback-dependency-baseline-2026-11-26 1887909eee9aa0ad62d52afe90e686372862af47
+git clone --branch fix/callback-dependency-baseline-2026-11-26 https://github.com/componenta/mimetype-detector.git .development-dependencies/mimetype-detector
+git -C .development-dependencies/mimetype-detector switch -C fix/callback-dependency-baseline-2026-11-26 7bd035263f7ba96e351fbe5cbe3eda19ed7cc135
 php .github/scripts/prepare-development.php
 composer validate --strict
 COMPOSER=.composer-development.json composer update --no-interaction --prefer-dist

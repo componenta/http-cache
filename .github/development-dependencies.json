@@ -2,7 +2,7 @@
     "di": {
         "branch": "fix/callback-dependency-baseline-2026-11-26",
         "alias": "6.0.x-dev",
-        "commit": "ded9a6dc44db2775c4753e73d9581d70caac6043"
+        "commit": "e4f19ab9a9f6bd18da85fc52c8d478433a32baec"
     },
     "router": {
         "branch": "fix/callback-dependency-baseline-2026-11-26",
@@ -18,5 +18,15 @@
         "branch": "fix/callback-dependency-baseline-2026-11-26",
         "alias": "1.0.x-dev",
         "commit": "6080a95ad9ebed4a659b8025df4ff0edb2d84add"
+    },
+    "pipeline": {
+        "branch": "fix/callback-dependency-baseline-2026-11-26",
+        "alias": "1.0.x-dev",
+        "commit": "1887909eee9aa0ad62d52afe90e686372862af47"
+    },
+    "mimetype-detector": {
+        "branch": "fix/callback-dependency-baseline-2026-11-26",
+        "alias": "1.0.x-dev",
+        "commit": "7bd035263f7ba96e351fbe5cbe3eda19ed7cc135"
     }
 }
