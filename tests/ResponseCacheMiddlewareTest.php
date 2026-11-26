@@ -126,6 +126,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertStringContainsString('private', strtolower($response->getHeaderLine('Cache-Control')));
     }
 
+    public function testPrivatePolicyProtectsEvenNonStorableResponses(): void
+    {
+        $request = (new ServerRequest('GET', 'https://example.test/account'))
+            ->withHeader('Authorization', 'Bearer secret');
+        $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies($policy);
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [
+            'Cache-Control' => 'public, s-maxage=600, no-store',
+            'Set-Cookie' => 'session=rotated',
+        ], 'private'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process($request, $handler);
+
+        self::assertSame('private, no-store', $response->getHeaderLine('Cache-Control'));
+        self::assertStringContainsString('authorization', strtolower($response->getHeaderLine('Vary')));
+        self::assertStringContainsString('cookie', strtolower($response->getHeaderLine('Vary')));
+    }
+
     public function testPrivatePolicyWithoutCredentialsBypassesSharedStore(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
