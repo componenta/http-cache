@@ -134,6 +134,23 @@ final class CachePipelineTest extends TestCase
         self::assertSame('anonymous', (string) $cache->process($request, $origin)->getBody());
     }
 
+    public function testGetBodyDoesNotReuseOrPopulateBodyIndependentCache(): void
+    {
+        $cache = $this->container(private: false)->get(ResponseCacheMiddleware::class);
+        self::assertInstanceOf(ResponseCacheMiddleware::class, $cache);
+        $request = CacheRequest::forHandler('catalog.handler');
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::exactly(2))->method('handle')->willReturnOnConsecutiveCalls(
+            new Response(200, [], 'body independent'),
+            new Response(200, [], 'body dependent'),
+        );
+        $withBody = $request->withBody((new Psr17Factory())->createStream('input'));
+
+        self::assertSame('body independent', (string) $cache->process($request, $origin)->getBody());
+        self::assertSame('body dependent', (string) $cache->process($withBody, $origin)->getBody());
+        self::assertSame('body independent', (string) $cache->process($request, $origin)->getBody());
+    }
+
     private function container(bool $private): \Psr\Container\ContainerInterface
     {
         $psr17 = new Psr17Factory();

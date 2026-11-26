@@ -172,6 +172,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($response->hasHeader('CDN-Cache-Control'));
     }
 
+    public function testEmptyCredentialHeadersDoNotEnablePrivateCaching(): void
+    {
+        $request = (new ServerRequest('GET', 'https://example.test/account'))
+            ->withHeader('Authorization', '');
+        $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
+        $policies = $this->policyProvider($policy);
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, [], 'origin'));
+
+        $response = $this->middleware($policies, $keys, $store, $this->createStub(CacheInvalidatorInterface::class))
+            ->process($request, $handler);
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
     public function testPrivatePolicyWithoutCredentialsBypassesSharedStore(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);

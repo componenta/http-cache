@@ -231,6 +231,10 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             || $request->hasHeader(Header::RANGE)
             || $request->hasHeader(Header::IF_MATCH)
             || $request->hasHeader(Header::IF_UNMODIFIED_SINCE)
+            || $request->hasHeader(Header::TRANSFER_ENCODING)
+            || !ResponseEligibility::matchesContentLength($request->getHeader(Header::CONTENT_LENGTH), 0)
+            || $request->getBody()->getSize() !== 0
+            || ($request->getParsedBody() !== null && $request->getParsedBody() !== [])
         ) {
             return false;
         }
@@ -241,7 +245,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         $hasCredentials = $this->hasCredentials($request);
 
-        return $policy->private ? $hasCredentials : !$hasCredentials;
+        return $policy->private
+            ? $hasCredentials
+            : !$hasCredentials && !$request->hasHeader(Header::AUTHORIZATION) && !$request->hasHeader(Header::COOKIE);
     }
 
     private function requestAcceptsCachedResponse(
@@ -324,8 +330,8 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function hasCredentials(ServerRequestInterface $request): bool
     {
-        return $request->hasHeader(Header::AUTHORIZATION)
-            || $request->hasHeader(Header::COOKIE)
+        return $request->getHeaderLine(Header::AUTHORIZATION) !== ''
+            || $request->getHeaderLine(Header::COOKIE) !== ''
             || $request->getCookieParams() !== [];
     }
 
