@@ -60,6 +60,32 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         self::assertNotSame($generator->generate($request, $policy), $generator->generate($request->withMethod('get'), $policy));
     }
 
+    public function testRawUriPathDistinguishesEmptyPathFromSlash(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $a = new ServerRequest('GET', 'https://example.test');
+        $b = new ServerRequest('GET', 'https://example.test/');
+        self::assertSame($a->getRequestTarget(), $b->getRequestTarget());
+        self::assertNotSame($generator->generate($a, $policy), $generator->generate($b, $policy));
+        self::assertSame(
+            \Componenta\Http\Cache\Key\RequestTarget::cacheTag($a),
+            \Componenta\Http\Cache\Key\RequestTarget::cacheTag($b),
+        );
+    }
+
+    public function testHostHeaderValuesAreNotFlattenedIntoAmbiguousLine(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $a = (new ServerRequest('GET', 'https://example.test/items'))->withHeader('Host', ['example.test', 'other.test']);
+        $b = $a->withHeader('Host', $a->getHeaderLine('Host'));
+
+        self::assertSame($a->getHeaderLine('Host'), $b->getHeaderLine('Host'));
+        self::assertNotSame($a->getHeader('Host'), $b->getHeader('Host'));
+        self::assertNotSame($generator->generate($a, $policy), $generator->generate($b, $policy));
+    }
+
     public function testResolvedRouteParametersPartitionIdenticalWireRequests(): void
     {
         $generator = new DefaultCacheKeyGenerator($this->tags());

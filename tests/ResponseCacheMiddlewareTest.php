@@ -895,6 +895,50 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('public, max-age=5', $response->getHeaderLine('Cache-Control'));
     }
 
+    public function testSuccessfulMissPublishesCorrectedAgeIncludingOriginDelay(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function (string $key, ResponseInterface $response, CacheFreshness $freshness): bool {
+                self::assertSame('15', $response->getHeaderLine('Age'));
+                self::assertSame(15, $freshness->ageAtReceipt);
+                return true;
+            },
+        );
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::once())->method('handle')->willReturnCallback(
+            static function () use ($clock): ResponseInterface {
+                $clock->advance(5);
+                return new Response(200, ['Date' => HttpDate::format(1005), 'Age' => '10'], 'body');
+            },
+        );
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
+
+        self::assertSame('15', $response->getHeaderLine('Age'));
+    }
+
+    public function testHitCannotExceedConfiguredSizeEvenWithCustomStore(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $policy = new HttpCachePolicy(ttl: 60);
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['X-Extra' => ['0123456789']],
+            body: 'body',
+            storedAt: 990,
+            freshUntil: 1060,
+        ));
+
+        $response = $this->middleware($this->policyProvider($policy), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), maxEntryBytes: 10, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
     public function testSynthesizedMaxAgeAccountsForUpstreamAgeEvenWithExpires(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));

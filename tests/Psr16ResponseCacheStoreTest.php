@@ -136,6 +136,30 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertNull($store->fetch('key'));
     }
 
+    public function testStoreCannotPersistNonemptyBodyWithMismatchedContentLength(): void
+    {
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        self::assertFalse($store->store('key', new Response(200, ['Content-Length' => '100'], 'body'), CacheFreshness::fromTtl(time(), 60)));
+        self::assertSame([], $cache->values);
+    }
+
+    public function testFetchRejectsNonemptyBodyWithMismatchedContentLength(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $cache->values['key'] = [
+            'status' => 200,
+            'headers' => ['Content-Length' => ['100']],
+            'body' => 'body',
+            'storedAt' => 1000,
+            'freshUntil' => 1060,
+        ];
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+
+        self::assertNull($store->fetch('key'));
+    }
+
     public function testAllowsHeadRepresentationLengthAndEmptyResetContent(): void
     {
         $store = new Psr16ResponseCacheStore(new InMemoryCache());
