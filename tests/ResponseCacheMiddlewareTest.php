@@ -496,6 +496,67 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('no-cache, must-revalidate', $response->getHeaderLine('Cache-Control'));
     }
 
+    /**
+     * @param array<string, list<string>> $requestHeaders
+     * @param array<string, list<string>> $storedHeaders
+     */
+    #[DataProvider('modifiedSinceCases')]
+    public function testIfModifiedSinceUsesCachedValidators(
+        string $method,
+        array $requestHeaders,
+        array $storedHeaders,
+        int $expectedStatus,
+    ): void {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $body = $method === 'HEAD' ? '' : 'body';
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: $storedHeaders + [
+                'Date' => [HttpDate::format(1000)],
+                'Cache-Control' => ['public, max-age=60'],
+                'Content-Length' => ['4'],
+            ],
+            body: $body,
+            storedAt: 1000,
+            freshUntil: 1060,
+        ));
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+        $response = $this->middleware(
+            $this->policyProvider(new HttpCachePolicy(ttl: 60)),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            clock: $clock,
+        )->process(new ServerRequest($method, 'https://example.test/items', $requestHeaders), $handler);
+
+        self::assertSame($expectedStatus, $response->getStatusCode());
+        self::assertSame(HttpDate::format(1000), $response->getHeaderLine('Date'));
+        self::assertSame($expectedStatus === 304 ? '' : $body, (string) $response->getBody());
+        if ($expectedStatus === 304) {
+            self::assertFalse($response->hasHeader('Content-Length'));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, list<string>>, array<string, list<string>>, int}>
+     */
+    public static function modifiedSinceCases(): iterable
+    {
+        $validator = ['Last-Modified' => [HttpDate::format(900)]];
+        $condition = ['If-Modified-Since' => [HttpDate::format(900)]];
+        yield 'equal last modified' => ['GET', $condition, $validator, 304];
+        yield 'resource is newer' => ['GET', ['If-Modified-Since' => [HttpDate::format(899)]], $validator, 200];
+        yield 'fallback to date' => ['GET', ['If-Modified-Since' => [HttpDate::format(1000)]], [], 304];
+        yield 'date newer than condition' => ['GET', $condition, [], 200];
+        yield 'invalid condition' => ['GET', ['If-Modified-Since' => ['invalid']], $validator, 200];
+        yield 'multiple conditions' => ['GET', ['If-Modified-Since' => [HttpDate::format(900), HttpDate::format(901)]], $validator, 200];
+        yield 'invalid last modified' => ['GET', $condition, ['Last-Modified' => ['invalid']], 200];
+        yield 'entity tag mismatch wins' => ['GET', $condition + ['If-None-Match' => ['"different"']], $validator + ['ETag' => ['"actual"']], 200];
+        yield 'head not modified' => ['HEAD', $condition, $validator, 304];
+    }
+
     public function testIfNoneMatchUsesWeakComparisonAndBuildsRfc304Metadata(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
