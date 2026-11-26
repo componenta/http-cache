@@ -93,34 +93,32 @@ final readonly class CacheResponse
         $enabled = true;
         $tags = $this->tags;
 
-        if ($request !== null) {
-            if ($this->when !== null) {
-                $predicateRequest = $request;
-                /** @var mixed $result */
-                $result = ($this->when)($predicateRequest);
+        if ($this->when !== null) {
+            $predicateRequest = $request;
+            /** @var mixed $result */
+            $result = ($this->when)($predicateRequest);
 
-                if (!is_bool($result)) {
-                    throw new UnexpectedValueException('HTTP cache "when" callback must return a boolean.');
-                }
-
-                $enabled = $result;
+            if (!is_bool($result)) {
+                throw new UnexpectedValueException('HTTP cache "when" callback must return a boolean.');
             }
 
-            if ($enabled && $this->tagsFactory !== null) {
-                $tagsRequest = $request;
-                /** @var mixed $dynamicTags */
-                $dynamicTags = ($this->tagsFactory)($tagsRequest);
+            $enabled = $result;
+        }
 
-                if (!is_array($dynamicTags) || !array_is_list($dynamicTags)) {
+        if ($enabled && $this->tagsFactory !== null) {
+            $tagsRequest = $request;
+            /** @var mixed $dynamicTags */
+            $dynamicTags = ($this->tagsFactory)($tagsRequest);
+
+            if (!is_array($dynamicTags) || !array_is_list($dynamicTags)) {
+                throw new UnexpectedValueException('HTTP cache "tagsFactory" callback must return a list of non-empty strings.');
+            }
+
+            foreach ($dynamicTags as $tag) {
+                if (!is_string($tag) || trim($tag) === '') {
                     throw new UnexpectedValueException('HTTP cache "tagsFactory" callback must return a list of non-empty strings.');
                 }
-
-                foreach ($dynamicTags as $tag) {
-                    if (!is_string($tag) || trim($tag) === '') {
-                        throw new UnexpectedValueException('HTTP cache "tagsFactory" callback must return a list of non-empty strings.');
-                    }
-                    $tags[] = $tag;
-                }
+                $tags[] = $tag;
             }
         }
 
