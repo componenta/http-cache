@@ -599,6 +599,49 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('/internal/file', $result->getHeaderLine('X-Accel-Redirect'));
     }
 
+    public function testSynthesizedCacheControlDoesNotOverrideEarlierExpires(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function (string $key, ResponseInterface $response, int $ttl): bool {
+                self::assertSame('public, max-age=5', $response->getHeaderLine('Cache-Control'));
+                self::assertSame(5, $ttl);
+                return true;
+            },
+        );
+        $handler = $this->handler(new Response(200, [
+            'Date' => HttpDate::format(1000),
+            'Expires' => HttpDate::format(1005),
+        ], 'body'));
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
+
+        self::assertSame('public, max-age=5', $response->getHeaderLine('Cache-Control'));
+    }
+
+    public function testSynthesizedMaxAgeAccountsForUpstreamAgeEvenWithExpires(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function (string $key, ResponseInterface $response, int $ttl): bool {
+                self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
+                self::assertSame(20, $ttl);
+                return true;
+            },
+        );
+        $handler = $this->handler(new Response(200, [
+            'Date' => HttpDate::format(960),
+            'Expires' => HttpDate::format(1100),
+            'Age' => '40',
+        ], 'body'));
+
+        $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
+    }
+
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

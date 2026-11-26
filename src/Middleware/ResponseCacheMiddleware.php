@@ -125,7 +125,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             $receipt = (int) $responseTime;
             $deadline = $ttl > PHP_INT_MAX - $receipt ? PHP_INT_MAX : $receipt + $ttl;
-            $response = ResponseMetadata::prepare($response, $policy);
+            $response = ResponseMetadata::prepare($response, $policy, $receipt);
             $storedResponse = $response;
 
             $generateEtag = $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);

@@ -6,6 +6,7 @@ namespace Componenta\Http\Cache\Internal;
 
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Cache\Protocol\HeaderList;
+use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Header;
 use Psr\Http\Message\ResponseInterface;
 
@@ -15,9 +16,19 @@ final class ResponseMetadata
     public static function prepare(
         ResponseInterface $response,
         HttpCachePolicy $policy,
+        int $now,
     ): ResponseInterface {
         if (!$response->hasHeader(Header::CACHE_CONTROL)) {
-            $response = $response->withHeader(Header::CACHE_CONTROL, $policy->cacheControlValue());
+            $maxAge = $policy->ttl;
+            if ($response->hasHeader(Header::EXPIRES)) {
+                $expires = HttpDate::parse($response->getHeaderLine(Header::EXPIRES), $now);
+                $date = HttpDate::parse($response->getHeaderLine(Header::DATE), $now);
+                $maxAge = $expires === null || $date === null ? 0 : min($maxAge, max(0, $expires - $date));
+            }
+            $response = $response->withHeader(
+                Header::CACHE_CONTROL,
+                sprintf('%s, max-age=%d', $policy->private ? 'private' : 'public', $maxAge),
+            );
         }
         if ($policy->private) {
             $response = self::forcePrivateCacheControl($response);

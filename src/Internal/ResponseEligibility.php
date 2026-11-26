@@ -53,7 +53,14 @@ final class ResponseEligibility
             return null;
         }
 
-        $ttl = $policy->ttl;
+        // If no explicit Cache-Control exists, prepare() will emit a policy
+        // max-age. The cache must not outlive the header it synthesizes.
+        $ttl = $response->hasHeader(Header::CACHE_CONTROL)
+            ? $policy->ttl
+            : $policy->ttl - $currentAge;
+        if ($ttl <= 0) {
+            return null;
+        }
         $freshness = null;
 
         if (!$policy->private) {
