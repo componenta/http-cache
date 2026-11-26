@@ -28,6 +28,10 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
         $payload = [
             'method' => $request->getMethod(),
             'target' => RequestTarget::identity($request),
+            // Retain PSR-7 distinctions that are intentionally normalized by
+            // the effective-URI invalidation tag.
+            'rawPath' => $request->getUri()->getPath(),
+            'hostValues' => array_values($request->getHeader(Header::HOST)),
             'queryParams' => self::validateParameters($request->getQueryParams()),
             'route' => $match?->name,
             'routeParameters' => self::validateParameters($match->parameters ?? []),
