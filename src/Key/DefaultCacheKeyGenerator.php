@@ -8,6 +8,7 @@ use Componenta\Http\Cache\Invalidation\TagVersionStoreInterface;
 use Componenta\Http\Cache\Policy\HttpCachePolicy;
 use Componenta\Http\Header;
 use Componenta\Http\Router\Middleware\MatchRouteMiddleware;
+use InvalidArgumentException;
 use Psr\Http\Message\ServerRequestInterface;
 
 final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterface
@@ -26,13 +27,42 @@ final readonly class DefaultCacheKeyGenerator implements CacheKeyGeneratorInterf
         $payload = [
             'method' => $request->getMethod(),
             'target' => RequestTarget::identity($request),
+            'queryParams' => self::validateParameters($request->getQueryParams()),
             'route' => $match === null ? '_unknown' : $match->name,
             'policy' => $this->policyFingerprint($policy),
             'vary' => $this->varyHeaders($request, $policy),
             'tags' => $this->tags->versions($tags),
         ];
 
-        return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR));
+        if ($policy->private) {
+            $payload['cookieParams'] = self::validateParameters($request->getCookieParams());
+        }
+
+        return hash('sha256', $this->prefix . "\0" . json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+    }
+
+    /**
+     * PHP's parsed request parameters are independent of the wire URI/headers.
+     * Reject non-data objects/resources and recursive/excessively deep arrays
+     * instead of calling arbitrary serialization code during key generation.
+     *
+     * @param array<array-key, mixed> $parameters
+     * @return array<array-key, mixed>
+     */
+    private static function validateParameters(array $parameters, int $depth = 0): array
+    {
+        if ($depth >= 32) {
+            throw new InvalidArgumentException('HTTP cache request parameters exceed the supported nesting depth.');
+        }
+        foreach ($parameters as $value) {
+            if (is_array($value)) {
+                self::validateParameters($value, $depth + 1);
+            } elseif ($value !== null && !is_scalar($value)) {
+                throw new InvalidArgumentException('HTTP cache request parameters must contain scalar data or arrays.');
+            }
+        }
+
+        return $parameters;
     }
 
     /**

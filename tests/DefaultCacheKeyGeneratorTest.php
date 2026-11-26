@@ -59,6 +59,39 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         self::assertNotSame($generator->generate($request, $policy), $generator->generate($request->withMethod('get'), $policy));
     }
 
+    public function testParsedQueryParametersPartitionIdenticalWireUris(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $request = new ServerRequest('GET', 'https://example.test/items?category=1');
+
+        self::assertNotSame(
+            $generator->generate($request->withQueryParams(['category' => '1']), $policy),
+            $generator->generate($request->withQueryParams(['category' => '2']), $policy),
+        );
+    }
+
+    public function testParsedCookieParametersPartitionIdenticalWireCredentials(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60, private: true, allowAuthenticated: true);
+        $request = (new ServerRequest('GET', 'https://example.test/account'))->withHeader('Cookie', 'session=token');
+
+        self::assertNotSame(
+            $generator->generate($request->withCookieParams(['session' => 'first']), $policy),
+            $generator->generate($request->withCookieParams(['session' => 'second']), $policy),
+        );
+    }
+
+    public function testKeyRejectsExecutableParameterObjects(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $request = (new ServerRequest('GET', 'https://example.test/items'))->withQueryParams(['value' => new \stdClass()]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $generator->generate($request, new HttpCachePolicy(ttl: 60));
+    }
+
     public function testGeneratedKeyIsPortablePsr16Key(): void
     {
         $generator = new DefaultCacheKeyGenerator($this->tags(), 'tenant:with:reserved:characters');

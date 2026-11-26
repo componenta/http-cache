@@ -324,8 +324,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
     private function hasCredentials(ServerRequestInterface $request): bool
     {
-        return $request->getHeaderLine(Header::AUTHORIZATION) !== ''
-            || $request->getHeaderLine(Header::COOKIE) !== '';
+        return $request->hasHeader(Header::AUTHORIZATION)
+            || $request->hasHeader(Header::COOKIE)
+            || $request->getCookieParams() !== [];
     }
 
     private function isUnsafeMethod(string $method): bool
