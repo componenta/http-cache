@@ -51,9 +51,9 @@ final class CatalogHandler
 }
 ```
 
-Configured route policies take precedence over attributes.
+Configured route policies take precedence over attributes. Array settings are validated when the configuration policy provider is constructed, including policies for routes not yet matched. Unknown settings and conflicting snake_case/camelCase aliases are rejected.
 
-Only the exact case-sensitive GET and HEAD methods can be served from this cache. Requests with non-empty or unknown-size bodies, non-empty parsed bodies, nonzero Content-Length or Transfer-Encoding bypass caching. Other unsafe methods reach the origin handler unless `only-if-cached` is present, in which case the cache returns 504 without performing a mutation. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
+Only the exact case-sensitive GET and HEAD methods can be served from this cache. Requests with non-empty or unknown-size bodies, non-empty parsed bodies, nonzero Content-Length or Transfer-Encoding bypass caching. Unsafe methods reach the origin handler unless `only-if-cached` is present, in which case this application middleware returns 504 without performing a mutation. This deliberately preserves the application's strict no-origin contract, rather than the unsafe-method write-through rule for generic HTTP intermediaries in RFC 9111 §4. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
 
 ### Request callbacks
 
@@ -174,7 +174,7 @@ Here `$remainingTtl` must already respect origin freshness directives and the ap
 
 ## Invalidation
 
-Application tags can be invalidated through `CacheInvalidatorInterface`.
+Application tags can be invalidated through `CacheInvalidatorInterface`. The default PSR-16 implementation validates the entire list before writing, trims surrounding whitespace consistently with policies, and deduplicates equivalent tags. When one backend operation fails, remaining distinct tags are still attempted and the first failure is rethrown. Multi-tag invalidation is not atomic. Custom generation stores must return a generation for every requested tag; incomplete snapshots cause a cache bypass.
 
 Target URI generations are also used internally. After a successful unsafe request the target URI generation is changed, making prior GET/HEAD entries unreachable.
 
@@ -184,7 +184,7 @@ Tag generations use portable hashed PSR-16 keys. Reads are batched; missing, evi
 
 If a `Psr\Log\LoggerInterface` service is registered, cache key, read, reconstruction, write and invalidation failures are logged without including request credentials in the log message.
 
-Cache lookup and write failures fail open to the origin response. If a cache-eligible refresh yields a response that cannot replace a previous entry, the old entry for that exact key is removed; a failed removal is logged. This is conservative eviction, not a 304 metadata merge. A request bypassed by `no-store` or a policy veto does not access or remove existing entries. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
+Request-body inspection, cache lookup, cached-metadata validation and write failures fail open to the origin response. Cache-generated freshness and Vary headers are published only after successful storage; bypasses preserve the original cache directives apart from the enabled private policy's protective rewriting. A validator generated from a complete body may still be returned after a storage failure. If a cache-eligible refresh yields a response that cannot replace a previous entry, the old entry for that exact key is removed; a failed removal is logged. This is conservative eviction, not a 304 metadata merge. A request bypassed by `no-store` or a policy veto does not access or remove existing entries. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
 
 The optional debug response header can be enabled with:
 
