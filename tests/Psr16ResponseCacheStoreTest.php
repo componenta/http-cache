@@ -261,6 +261,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         $body->method('isSeekable')->willReturn(true);
         $body->method('getSize')->willReturn(4);
         $body->method('tell')->willReturn(0);
+        $body->expects(self::once())->method('seek')->with(0);
         $body->method('eof')->willReturn(true);
         $body->method('read')->willReturnCallback(static function () use ($clock): string {
             $clock->advance(1);
