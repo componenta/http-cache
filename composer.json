@@ -35,7 +35,7 @@
         }
     },
     "scripts": {
-        "test": "@php vendor/bin/phpunit tests --display-deprecations --display-notices",
+        "test": "@php vendor/bin/phpunit tests --display-deprecations --display-notices --display-phpunit-notices",
         "phpstan": "@php vendor/bin/phpstan analyse --no-progress",
         "check": [
             "@phpstan",

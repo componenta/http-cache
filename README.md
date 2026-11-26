@@ -28,7 +28,7 @@ A typical order is:
 4. response cache
 5. route dispatch
 
-When the application is behind a reverse proxy, normalize the PSR-7 request URI with the trusted-proxy middleware before this cache. Do not build the effective URI directly from untrusted forwarded headers. Scheme, effective authority, URI path, raw URI query, Host field and wire request target participate independently in the cache identity. Do not derive representation selection from unkeyed request inputs. Set a separate key prefix for independent applications or deployments sharing a backend.
+When the application is behind a reverse proxy, normalize the PSR-7 request URI with the trusted-proxy middleware before this cache. Do not build the effective URI directly from untrusted forwarded headers. Scheme, effective authority, URI path, raw URI query, parsed PSR-7 query parameters, Host field and wire request target participate independently in the cache identity. Parameters must be scalar data, null or arrays of those values; unsupported or excessively nested data causes a cache bypass. Do not derive representation selection from unkeyed request inputs. Set a separate key prefix for independent applications or deployments sharing a backend.
 
 ## Policies
 
@@ -53,7 +53,7 @@ final class CatalogHandler
 
 Configured route policies take precedence over attributes.
 
-Only the exact case-sensitive GET and HEAD methods can be served from this cache. Other unsafe methods reach the origin handler unless `only-if-cached` is present, in which case the cache returns 504 without performing a mutation. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
+Only the exact case-sensitive GET and HEAD methods can be served from this cache. Requests with non-empty or unknown-size bodies, non-empty parsed bodies, nonzero Content-Length or Transfer-Encoding bypass caching. Other unsafe methods reach the origin handler unless `only-if-cached` is present, in which case the cache returns 504 without performing a mutation. Successful 2xx/3xx unsafe responses invalidate every cached representation of the effective target URI.
 
 ### Request callbacks
 
@@ -99,7 +99,7 @@ Direct `toPolicy()` remains valid for a static attribute. A callback-backed attr
 
 ## Authentication and private responses
 
-Public cache policies are bypassed when the request contains `Authorization` or `Cookie`.
+Public cache policies are bypassed when the request contains an `Authorization` or `Cookie` field (even an empty one) or non-empty parsed PSR-7 cookie parameters.
 
 Credential-partitioned private caching must be enabled explicitly:
 
@@ -111,7 +111,7 @@ new HttpCachePolicy(
 );
 ```
 
-Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
+Private entries are application-managed credential-partitioned memoization, not a generic shared RFC HTTP cache. Their keys include both presented `Authorization` and `Cookie` field values and parsed PSR-7 cookie parameters. An empty credential field alone cannot enable private caching. An enabled private policy enforces an unqualified `Cache-Control: private`, removes `public`, `s-maxage` and shared-proxy/CDN cache overrides, preserves restrictive directives, and varies on both credential fields on hits, misses and bypasses. An explicit callback veto leaves the origin response unchanged.
 
 A private policy without credential partitioning is rejected. A request using a private policy but carrying no credentials bypasses the cache.
 
@@ -127,7 +127,7 @@ This prevents a response selected by one request header set from being reused fo
 
 ## Cache-Control and validators
 
-The middleware preserves application-provided `Cache-Control` directives and honors restrictive directives such as `no-store` and `no-cache`.
+The middleware preserves valid application-provided `Cache-Control` directives and honors restrictive directives such as `no-store` and `no-cache`. Malformed directive syntax prevents cache use or storage. Under an enabled private policy, a malformed response field is replaced with `private, no-store`. A synthesized max-age never extends an explicit Expires lifetime.
 
 It supports:
 
@@ -140,7 +140,7 @@ It supports:
 
 Origin-only preconditions such as `If-Match` and `If-Unmodified-Since` bypass cache reuse and are forwarded to the origin handler.
 
-Range responses and offload responses (`X-Accel-Redirect`, `X-Sendfile`) are not cached. GET bodies with inconsistent Content-Length or incomplete stream reads are rejected. A conditional hit producing 304 does not reconstruct the stored body. The freshness budget starts at origin response receipt and is reduced by preparation and storage work; a registered PSR-20 clock is shared by the default factories.
+Range responses and offload responses (`X-Accel-Redirect`, `X-Sendfile`) are not cached. GET response bodies with inconsistent Content-Length or incomplete stream reads are rejected, as are HEAD, 204 and 205 responses with content. Statuses 428, 429, 431 and 511 cannot be configured as cacheable (RFC 6585), even with explicit freshness directives. Factory-provided defaults are not merged into cached representations; apply response decoration outside the cache if needed on every response. A conditional hit producing 304 does not reconstruct the stored body. The absolute freshness budget starts at origin response receipt and is reduced by preparation and storage work. On a hit, the middleware also checks the origin's explicit freshness directives rather than trusting the backend deadline alone. A registered PSR-20 clock is shared by the default factories.
 
 ## Storage safety
 
@@ -154,6 +154,24 @@ ConfigKey::MAX_ENTRY_BYTES => 8_388_608,
 
 The limit applies to stored headers and body. Only complete readable, seekable streams are snapshotted; their original positions are restored even on read failure when the stream supports restoration. Connection-specific fields are removed, but responses that nominate cache or representation metadata for removal are rejected. Stored payloads are checked for valid statuses, timestamps, header structure, control characters, forbidden fields, directives and size. Custom stores must preserve the same admission and freshness contracts.
 
+### Store extension contract (2.x)
+
+`ResponseCacheStoreInterface::store(string $key, ResponseInterface $response, CacheFreshness $freshness): bool` replaces the relative integer TTL parameter from 1.x. The immutable `CacheFreshness` carries the Unix timestamp of receipt, corrected age at receipt and the absolute freshness deadline. Use `remainingAt($now)` when choosing the backend TTL and `ageAt($now)` when constructing the stored response. A delayed store must never restart the deadline or reset upstream age. Return false on expiry or an inadmissible response; `delete()` must throw when removal fails. The persisted response shape is unchanged.
+
+For direct store use:
+
+```php
+use Componenta\Http\Cache\Protocol\ResponseAge;
+use Componenta\Http\Cache\Store\CacheFreshness;
+
+$receivedAt = $clock->now()->getTimestamp();
+$age = ResponseAge::atReceipt($response, (float) $receivedAt);
+$freshness = CacheFreshness::fromTtl($receivedAt, $remainingTtl, $age);
+$store->store($key, $response, $freshness);
+```
+
+Here `$remainingTtl` must already respect origin freshness directives and the application policy.
+
 ## Invalidation
 
 Application tags can be invalidated through `CacheInvalidatorInterface`.
@@ -166,7 +184,7 @@ Tag generations use portable hashed PSR-16 keys. Reads are batched; missing, evi
 
 If a `Psr\Log\LoggerInterface` service is registered, cache key, read, reconstruction, write and invalidation failures are logged without including request credentials in the log message.
 
-Cache lookup and write failures fail open to the origin response. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
+Cache lookup and write failures fail open to the origin response. If a cache-eligible refresh yields a response that cannot replace a previous entry, the old entry for that exact key is removed; a failed removal is logged. This is conservative eviction, not a 304 metadata merge. A request bypassed by `no-store` or a policy veto does not access or remove existing entries. `only-if-cached` never reaches the origin and returns 504 when a usable stored response cannot be produced.
 
 The optional debug response header can be enabled with:
 

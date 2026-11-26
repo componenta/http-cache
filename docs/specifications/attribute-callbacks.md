@@ -227,7 +227,7 @@ After focused behavior checks, run the established `composer check` gate on the 
 - `README.md`: describe callback signatures, evaluation timing, disabled-vs-absent distinction, middleware prerequisites, runtime syntax, and failure behavior.
 - Composer/CI runtime configuration: require PHP `^8.5.13`, verify the minimum and current PHP 8.5 patch, and install the actual latest compatible Componenta dependency revisions.
 
-`DefaultCacheKeyGenerator` is a verification boundary, not an automatic rewrite target: dynamic tags already flow through its policy fingerprint and generation lookup. `CachePolicyProviderInterface`, `CacheKeyGeneratorInterface`, response-store interfaces/serialization, and composite-provider ordering are retained. No new provider/resolver interface or persisted callback representation is required.
+`DefaultCacheKeyGenerator` is a verification boundary, not an automatic rewrite target: dynamic tags already flow through its policy fingerprint and generation lookup. `CachePolicyProviderInterface`, `CacheKeyGeneratorInterface`, response-store serialization, and composite-provider ordering are retained. The subsequent 2.0 audit changes the store write contract to carry immutable absolute `CacheFreshness`, preventing a delayed backend from restarting a relative TTL; this is independent of callback resolution. No new provider/resolver interface or persisted callback representation is required.
 
 ## Implementation sequencing
 
@@ -246,3 +246,7 @@ Prove native static anonymous functions, repeated class-specific private static 
 ## Convergence check
 
 The implementation is complete only when R1–R4, I1–I4, and P1–P4 hold together. Reject an implementation that treats false as absence, retains callbacks in resolved policy/storage, caches dynamic results by route, weakens Vary/credential partitioning, catches policy errors as backend outages, evaluates response-dependent logic on a hit, or changes static key identity outside the explicitly documented audit amendments. Confirm examples use supported PHP 8.5 attribute expressions and the published runtime policy matches Composer/CI.
+
+### Subsequent audit amendments
+
+Parsed PSR-7 query and cookie parameters also partition keys, credential ambiguity and body-dependent requests bypass the cache, malformed Cache-Control and explicitly forbidden RFC 6585 statuses are rejected, and absolute freshness is propagated to the store. These safety changes supersede any earlier statement that the relative store TTL signature is preserved. Callback signatures, invocation timing, precedence, errors, and request-dependent veto semantics are unchanged.
