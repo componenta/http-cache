@@ -14,6 +14,8 @@ use Componenta\Http\Cache\Protocol\HttpDate;
 use Componenta\Http\Cache\Store\CacheFreshness;
 use Componenta\Http\Cache\Store\CachedResponse;
 use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
+use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
+use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
 use Componenta\Http\Cache\Tests\Fixture\MutableClock;
 use DateTimeImmutable;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -1362,6 +1364,90 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->withHeader('Cache-Control', 'extension="unclosed, no-store');
 
         self::assertSame('origin', (string) $this->middleware($policies, $keys, $store, $this->createStub(CacheInvalidatorInterface::class))->process($request, $handler)->getBody());
+    }
+
+    public function testMiddlewareCannotWriteAnEntryLargerThanItsOwnLimit(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache();
+        // The store is independently configured and may be shared with
+        // another middleware that permits larger entries.
+        $store = new Psr16ResponseCacheStore($backend, maxEntryBytes: 1024, clock: $clock);
+        $policy = new HttpCachePolicy(ttl: 60, generateEtag: false);
+        $response = $this->middleware(
+            $this->policyProvider($policy),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            maxEntryBytes: 100,
+            clock: $clock,
+        )->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, ['X-Large' => str_repeat('a', 80)], 'body')),
+        );
+
+        self::assertSame('body', (string) $response->getBody());
+        self::assertSame([], $backend->values);
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testMiddlewareIncludesGeneratedHeadersInTheEntryBudget(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        // The body and original headers fit; the generated ETag, freshness,
+        // Date and Age fields push the stored representation over the limit.
+        $response = $this->middleware($policies, $keys, $store, $invalidator, maxEntryBytes: 80, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/resource'), $this->handler(new Response(200, [], 'body')));
+
+        self::assertSame('body', (string) $response->getBody());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testMiddlewareBoundsUnknownSizeEvenWithoutGeneratedEtag(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60, generateEtag: false));
+        $store->expects(self::never())->method('store');
+        $body = $this->createStub(\Psr\Http\Message\StreamInterface::class);
+        $body->method('getSize')->willReturn(null);
+        $body->method('isReadable')->willReturn(true);
+        $body->method('isSeekable')->willReturn(true);
+        $body->method('tell')->willReturn(0);
+        $body->method('eof')->willReturn(true);
+        $body->method('read')->willReturn(str_repeat('a', 200));
+        $response = $this->middleware($policies, $keys, $store, $invalidator, maxEntryBytes: 100, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/resource'), $this->handler((new Response(200))->withBody($body)));
+
+        self::assertSame($body, $response->getBody());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testDiscardedConnectionFieldsDoNotConsumeStoredEntryBudget(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($backend, maxEntryBytes: 100, clock: $clock);
+        $policy = new HttpCachePolicy(ttl: 60, generateEtag: false);
+        $response = $this->middleware(
+            $this->policyProvider($policy),
+            $this->keyGenerator(),
+            $store,
+            $this->createStub(CacheInvalidatorInterface::class),
+            maxEntryBytes: 100,
+            clock: $clock,
+        )->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, [
+                'Connection' => 'X-Transient',
+                'X-Transient' => str_repeat('a', 200),
+            ], 'body')),
+        );
+
+        self::assertSame('public, max-age=60', $response->getHeaderLine('Cache-Control'));
+        self::assertSame('body', $store->fetch('cache-key')?->body);
+        self::assertArrayNotHasKey('X-Transient', $store->fetch('cache-key')?->headers ?? []);
     }
 
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
