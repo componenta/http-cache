@@ -829,6 +829,24 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($result->hasHeader('Cache-Control'));
     }
 
+    public function testRequestWithUploadedFilesCannotReuseBodyIndependentCache(): void
+    {
+        $policies = $this->policyProvider(new HttpCachePolicy(ttl: 60));
+        $keys = $this->createMock(CacheKeyGeneratorInterface::class);
+        $keys->expects(self::never())->method('generate');
+        $store = $this->createMock(ResponseCacheStoreInterface::class);
+        $store->expects(self::never())->method('fetch');
+        $store->expects(self::never())->method('store');
+        $factory = new Psr17Factory();
+        $file = $factory->createUploadedFile($factory->createStream('upload'), 6, UPLOAD_ERR_OK, 'a.txt');
+        $request = (new ServerRequest('GET', 'https://example.test/items'))->withUploadedFiles(['file' => $file]);
+
+        $response = $this->middleware($policies, $keys, $store, $this->createStub(CacheInvalidatorInterface::class))
+            ->process($request, $this->handler(new Response(200, [], 'upload-dependent')));
+
+        self::assertSame('upload-dependent', (string) $response->getBody());
+    }
+
     public function testRequestBodyInspectionFailureBypassesCacheWithoutInvokingBackend(): void
     {
         $policies = $this->policyProvider(new HttpCachePolicy(ttl: 60));
@@ -895,6 +913,60 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('public, max-age=5', $response->getHeaderLine('Cache-Control'));
     }
 
+    public function testClockFailureBeforeOriginDoesNotPreventHandling(): void
+    {
+        $clock = $this->createMock(ClockInterface::class);
+        $clock->expects(self::once())->method('now')->willThrowException(new RuntimeException('clock unavailable'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testClockFailureAfterOriginDoesNotDiscardSuccessfulResponse(): void
+    {
+        $calls = 0;
+        $clock = $this->createMock(ClockInterface::class);
+        $clock->expects(self::exactly(2))->method('now')->willReturnCallback(
+            static function () use (&$calls): DateTimeImmutable {
+                ++$calls;
+                if ($calls === 2) {
+                    throw new RuntimeException('clock unavailable');
+                }
+                return new DateTimeImmutable('@1000');
+            },
+        );
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
+    public function testSuccessfulMissIncludesTimeSpentInStorageInAge(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::once())->method('store')->willReturnCallback(
+            static function () use ($clock): bool {
+                $clock->advance(5);
+                return true;
+            },
+        );
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('5', $response->getHeaderLine('Age'));
+    }
+
     public function testSuccessfulMissPublishesCorrectedAgeIncludingOriginDelay(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
@@ -918,6 +990,42 @@ final class ResponseCacheMiddlewareTest extends TestCase
             ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
 
         self::assertSame('15', $response->getHeaderLine('Age'));
+    }
+
+    public function testCustomStoreCannotHideNoStoreWithDifferentlyCasedDuplicateField(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Cache-Control' => ['no-store'], 'cache-control' => ['public, max-age=60']],
+            body: 'invalid',
+            storedAt: 990,
+            freshUntil: 1060,
+        ));
+
+        $response = $this->middleware($this->policyProvider(new HttpCachePolicy(ttl: 60)), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+    }
+
+    public function testCustomStoreCannotReplayHopByHopFields(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $store = $this->createStub(ResponseCacheStoreInterface::class);
+        $store->method('fetch')->willReturn(new CachedResponse(
+            status: 200,
+            headers: ['Connection' => ['Cache-Control'], 'Cache-Control' => ['public, max-age=60']],
+            body: 'invalid',
+            storedAt: 990,
+            freshUntil: 1060,
+        ));
+
+        $response = $this->middleware($this->policyProvider(new HttpCachePolicy(ttl: 60)), $this->keyGenerator(), $store, $this->createStub(CacheInvalidatorInterface::class), clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
     }
 
     public function testHitCannotExceedConfiguredSizeEvenWithCustomStore(): void
