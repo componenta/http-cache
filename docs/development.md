@@ -4,18 +4,17 @@ HTTP Cache 2.x requires PHP 8.5.13+, Componenta Config 4, HTTP 1 and Router 3.1 
 
 ## Current integration graph
 
-CI installs published Config 4, Reflection 3, HTTP 1, HTTP Responder 2 and MIME Type Detector 2. It uses the actual unreleased sources below for packages that have not yet published a compatible release. No package is replaced, provided under a false version, or assigned a synthetic version alias.
+CI installs published Config 4, Reflection 3, HTTP 1, HTTP Responder 2, MIME Type Detector 2 and Pipeline 1.1.1+ within 1.x. It uses the actual unreleased sources below for packages that have not yet published a compatible release. No package is replaced, provided under a false version, or assigned a synthetic version alias.
 
 | Package | Source branch | Declared version line | Revision |
 |---|---|---|---|
 | `componenta/di` | `main` | `6.0.x-dev` | [`e203077d1204`](https://github.com/componenta/di/commit/e203077d12048936f078d37d1cf3badd661e1716) |
 | `componenta/router` | `fix/http-cache-dependency-integration-2026-11-26` | `3.1.x-dev` | [`afe53a6b2d58`](https://github.com/componenta/router/commit/afe53a6b2d58cc235ef177eef6318e93d876350b) |
-| `componenta/middleware-factory` | `refactor/middleware-factory-audit` | `3.0.x-dev` | [`a1b4c71718ad`](https://github.com/componenta/middleware-factory/commit/a1b4c71718adc6b8741e53f9d01976d8d06aeeeb) |
-| `componenta/pipeline` | `fix/pipeline-audit` | `1.1.x-dev` | [`a36d1b02f473`](https://github.com/componenta/pipeline/commit/a36d1b02f473587638e1ceaaee1272381948f485) |
+| `componenta/middleware-factory` | `refactor/middleware-factory-audit` | `3.0.x-dev` | [`1f8d364be116`](https://github.com/componenta/middleware-factory/commit/1f8d364be1161fe5f6162c6f00a72e7f64c36fd8) |
 
-The Router integration branch adds support for Responder 2 and Middleware Factory 3 without changing its routing API. Its compatibility range is additive; HTTP Cache CI selects the new major lines, not the earlier interim compatibility branches. Publication requires compatible stable Router, Middleware Factory, Pipeline and DI releases.
+The Router integration branch adds support for Responder 2 and Middleware Factory 3 without changing its routing API. Its compatibility range is additive; HTTP Cache CI selects the new major lines, not the earlier interim compatibility branches. Publication requires compatible stable Router, Middleware Factory and DI releases. Pipeline 1.1.1 is already released.
 
-The machine-readable inventory is [development-dependencies.json](../.github/development-dependencies.json). The preparation script validates source revisions, names and declared aliases and creates a separate Composer root. It also requires published Responder and MIME Type Detector 2 for development acceptance. The tracked package manifest remains unchanged.
+The machine-readable inventory is [development-dependencies.json](../.github/development-dependencies.json). The preparation script validates source revisions, names and declared aliases and creates a separate Composer root. It also requires published Responder and MIME Type Detector 2 and Pipeline 1.1.1+ for development acceptance. The tracked package manifest remains unchanged.
 
 ## Reproduce the integration
 
@@ -28,9 +27,7 @@ git -C .development-dependencies/di switch -C main e203077d12048936f078d37d1cf3b
 git clone --branch fix/http-cache-dependency-integration-2026-11-26 https://github.com/componenta/router.git .development-dependencies/router
 git -C .development-dependencies/router switch -C fix/http-cache-dependency-integration-2026-11-26 afe53a6b2d58cc235ef177eef6318e93d876350b
 git clone --branch refactor/middleware-factory-audit https://github.com/componenta/middleware-factory.git .development-dependencies/middleware-factory
-git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit a1b4c71718adc6b8741e53f9d01976d8d06aeeeb
-git clone --branch fix/pipeline-audit https://github.com/componenta/pipeline.git .development-dependencies/pipeline
-git -C .development-dependencies/pipeline switch -C fix/pipeline-audit a36d1b02f473587638e1ceaaee1272381948f485
+git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit 1f8d364be1161fe5f6162c6f00a72e7f64c36fd8
 php .github/scripts/prepare-development.php
 composer validate --strict
 COMPOSER=.composer-development.json composer update --no-interaction --prefer-dist

@@ -18,14 +18,8 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: componenta/middleware-factory
-        ref: a1b4c71718adc6b8741e53f9d01976d8d06aeeeb
+        ref: 1f8d364be1161fe5f6162c6f00a72e7f64c36fd8
         path: .development-dependencies/middleware-factory
-        persist-credentials: false
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        repository: componenta/pipeline
-        ref: a36d1b02f473587638e1ceaaee1272381948f485
-        path: .development-dependencies/pipeline
         persist-credentials: false
     - name: Restore source branch identities and prepare Composer
       shell: bash
@@ -33,5 +27,4 @@ runs:
         git -C .development-dependencies/di switch -C main
         git -C .development-dependencies/router switch -C fix/http-cache-dependency-integration-2026-11-26
         git -C .development-dependencies/middleware-factory switch -C refactor/middleware-factory-audit
-        git -C .development-dependencies/pipeline switch -C fix/pipeline-audit
         php .github/scripts/prepare-development.php
