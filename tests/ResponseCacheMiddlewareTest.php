@@ -988,6 +988,28 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('origin', (string) $response->getBody());
     }
 
+    public function testTransportFramedResponseDoesNotBecomeCacheableByDroppingFields(): void
+    {
+        foreach ([
+            ['Transfer-Encoding' => 'chunked'],
+            ['Transfer-Encoding' => 'gzip, chunked'],
+            ['Trailer' => 'Content-Digest'],
+        ] as $headers) {
+            [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+            $store->expects(self::never())->method('store');
+            $origin = new Response(200, $headers, 'transport-body');
+            $result = $this->middleware($policies, $keys, $store, $invalidator)->process(
+                new ServerRequest('GET', 'https://example.test/items'),
+                $this->handler($origin),
+            );
+            self::assertSame('transport-body', (string) $result->getBody());
+            self::assertFalse($result->hasHeader('Cache-Control'));
+            foreach ($headers as $name => $value) {
+                self::assertSame($value, $result->getHeaderLine($name));
+            }
+        }
+    }
+
     public function testIncompleteContentLengthIsNotStoredEvenWithOriginEtag(): void
     {
         [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));

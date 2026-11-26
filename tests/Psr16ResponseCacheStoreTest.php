@@ -115,6 +115,18 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testStoreRejectsTransportCodedResponsesAndUnresolvedTrailers(): void
+    {
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $freshness = CacheFreshness::fromTtl(time(), 60);
+
+        self::assertFalse($store->store('chunked', new Response(200, ['Transfer-Encoding' => 'chunked'], "4\r\nbody\r\n0\r\n\r\n"), $freshness));
+        self::assertFalse($store->store('gzip', new Response(200, ['Transfer-Encoding' => 'gzip, chunked'], 'coded'), $freshness));
+        self::assertFalse($store->store('trailers', new Response(200, ['Trailer' => 'Content-Digest'], 'body'), $freshness));
+        self::assertSame([], $cache->values);
+    }
+
     public function testRejectsForbiddenContentFramingOnRead(): void
     {
         $clock = new MutableClock(new DateTimeImmutable('@1000'));
