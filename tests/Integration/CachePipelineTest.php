@@ -14,7 +14,10 @@ use Componenta\Http\Cache\ConfigProvider;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Invalidation\Psr16TagVersionStore;
 use Componenta\Http\Cache\Invalidation\TagVersionStoreInterface;
+use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
 use Componenta\Http\Cache\Middleware\ResponseCacheMiddleware;
+use Componenta\Http\Cache\Policy\CachePolicyProviderInterface;
+use Componenta\Http\Cache\Store\ResponseCacheStoreInterface;
 use Componenta\Http\Cache\Tests\Fixture\CacheRequest;
 use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
 use Componenta\Http\Cache\Tests\Fixture\MutableClock;
@@ -212,6 +215,41 @@ final class CachePipelineTest extends TestCase
         self::assertSame(3, $reads);
     }
 
+    public function testExpiredGenerationMakesStillFreshResponseUnreachable(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache($clock);
+        $container = $this->container(private: false, backend: $backend, clock: $clock, generationTtl: 10);
+        $cache = $container->get(ResponseCacheMiddleware::class);
+        $store = $container->get(ResponseCacheStoreInterface::class);
+        $keys = $container->get(CacheKeyGeneratorInterface::class);
+        $policies = $container->get(CachePolicyProviderInterface::class);
+        self::assertInstanceOf(ResponseCacheMiddleware::class, $cache);
+        self::assertInstanceOf(ResponseCacheStoreInterface::class, $store);
+        self::assertInstanceOf(CacheKeyGeneratorInterface::class, $keys);
+        self::assertInstanceOf(CachePolicyProviderInterface::class, $policies);
+        $request = CacheRequest::forHandler('catalog.handler');
+        $policy = $policies->policyFor($request);
+        self::assertNotNull($policy);
+        $key = $keys->generate($request, $policy);
+        $origin = $this->createMock(RequestHandlerInterface::class);
+        $origin->expects(self::exactly(2))->method('handle')->willReturnOnConsecutiveCalls(
+            new Response(200, [], 'old'),
+            new Response(200, [], 'new'),
+        );
+
+        self::assertSame('old', (string) $cache->process($request, $origin)->getBody());
+        $clock->advance(9);
+        self::assertSame('HIT', $cache->process($request, $origin)->getHeaderLine('X-Componenta-Cache'));
+        $clock->advance(1);
+        // The original response has fifty seconds left, but its generation
+        // has expired and must not be selected again.
+        self::assertSame('old', $store->fetch($key)?->body);
+        self::assertSame('new', (string) $cache->process($request, $origin)->getBody());
+        self::assertNotSame($key, $keys->generate($request, $policy));
+        self::assertSame('HIT', $cache->process($request, $origin)->getHeaderLine('X-Componenta-Cache'));
+    }
+
     public function testCustomGenerationStoreAlsoReceivesDefaultInvalidation(): void
     {
         $generations = new Psr16TagVersionStore(new InMemoryCache());
@@ -234,10 +272,16 @@ final class CachePipelineTest extends TestCase
         self::assertSame('new', (string) $cache->process($request, $origin)->getBody());
     }
 
-    private function container(bool $private, ?TagVersionStoreInterface $generations = null): \Psr\Container\ContainerInterface
-    {
+    private function container(
+        bool $private,
+        ?TagVersionStoreInterface $generations = null,
+        ?CacheInterface $backend = null,
+        ?MutableClock $clock = null,
+        int $generationTtl = Psr16TagVersionStore::DEFAULT_GENERATION_TTL,
+    ): \Psr\Container\ContainerInterface {
         $psr17 = new Psr17Factory();
-        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $clock ??= new MutableClock(new DateTimeImmutable('@1000'));
+        $backend ??= new InMemoryCache();
         $composition = (new ConfigFactory())->create(
             new Environment([]),
             new ConfigProvider(),
@@ -251,11 +295,12 @@ final class CachePipelineTest extends TestCase
                     ],
                 ],
                 ConfigKey::DEBUG_HEADER => true,
+                ConfigKey::TAG_GENERATION_TTL => $generationTtl,
                 DependencyKey::DEPENDENCIES => [
                     DependencyKey::ALIASES => $generations === null ? [] : [TagVersionStoreInterface::class => 'test.generations'],
                     DependencyKey::SERVICES => [
                         ...($generations === null ? [] : ['test.generations' => $generations]),
-                        CacheInterface::class => new InMemoryCache(),
+                        CacheInterface::class => $backend,
                         ClockInterface::class => $clock,
                         ResponseFactoryInterface::class => $psr17,
                         StreamFactoryInterface::class => $psr17,

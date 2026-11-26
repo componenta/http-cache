@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Tests\Fixture;
 
 use DateInterval;
+use Psr\Clock\ClockInterface;
 use Psr\SimpleCache\CacheInterface;
 
 final class InMemoryCache implements CacheInterface
@@ -12,13 +13,34 @@ final class InMemoryCache implements CacheInterface
     /** @var array<string, mixed> */
     public array $values = [];
 
+    /** @var array<string, int> */
+    private array $expiresAt = [];
+
+    // Without a clock, deliberately ignore backend TTL so tests can verify
+    // that the HTTP store independently enforces its absolute deadlines.
+    public function __construct(private readonly ?ClockInterface $clock = null) {}
+
     public function get(string $key, mixed $default = null): mixed
     {
+        $this->expire($key);
+
         return $this->values[$key] ?? $default;
     }
 
     public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
     {
+        unset($this->expiresAt[$key]);
+        if ($this->clock !== null && $ttl !== null) {
+            $now = $this->clock->now();
+            $timestamp = $now->getTimestamp();
+            $deadline = $ttl instanceof DateInterval
+                ? $now->add($ttl)->getTimestamp()
+                : $timestamp + $ttl;
+            if ($deadline <= $timestamp) {
+                return $this->delete($key);
+            }
+            $this->expiresAt[$key] = $deadline;
+        }
         $this->values[$key] = $value;
 
         return true;
@@ -26,7 +48,7 @@ final class InMemoryCache implements CacheInterface
 
     public function delete(string $key): bool
     {
-        unset($this->values[$key]);
+        unset($this->values[$key], $this->expiresAt[$key]);
 
         return true;
     }
@@ -34,6 +56,7 @@ final class InMemoryCache implements CacheInterface
     public function clear(): bool
     {
         $this->values = [];
+        $this->expiresAt = [];
 
         return true;
     }
@@ -72,6 +95,16 @@ final class InMemoryCache implements CacheInterface
 
     public function has(string $key): bool
     {
+        $this->expire($key);
+
         return array_key_exists($key, $this->values);
+    }
+
+    private function expire(string $key): void
+    {
+        if ($this->clock !== null && isset($this->expiresAt[$key])
+            && $this->clock->now()->getTimestamp() >= $this->expiresAt[$key]) {
+            $this->delete($key);
+        }
     }
 }
