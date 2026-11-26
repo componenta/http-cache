@@ -203,13 +203,21 @@ final class ResponseEligibility
         }
 
         // Connection-specific fields may be discarded, but never discard metadata
-        // needed for cache safety, representation identity, redirects or authentication challenges.
+        // needed for cache safety, representation identity, redirects, authentication
+        // challenges or browser security. Reject rather than replay a weaker response.
         foreach (HeaderList::split($response->getHeader(Header::CONNECTION)) as $field) {
-            if (in_array(strtolower($field), [
+            $field = strtolower($field);
+            if (str_starts_with($field, 'access-control-') || in_array($field, [
                 'cache-control', 'age', 'date', 'expires', 'vary', 'etag',
                 'last-modified', 'content-length', 'content-type', 'content-encoding',
                 'content-language', 'content-location', 'content-digest',
-                'location', 'www-authenticate', 'allow',
+                'location', 'www-authenticate', 'allow', 'content-disposition',
+                'content-security-policy', 'content-security-policy-report-only',
+                'strict-transport-security', 'x-content-type-options', 'x-frame-options',
+                'referrer-policy', 'permissions-policy', 'x-xss-protection',
+                'cross-origin-opener-policy', 'cross-origin-opener-policy-report-only',
+                'cross-origin-embedder-policy', 'cross-origin-embedder-policy-report-only',
+                'cross-origin-resource-policy',
             ], true)) {
                 return false;
             }

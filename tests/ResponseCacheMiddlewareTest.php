@@ -430,6 +430,20 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('/target', $result->getHeaderLine('Location'));
     }
 
+    public function testConnectionNominatedBrowserProtectionCannotBeCachedEvenWithCustomStore(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $response = $this->middleware($policies, $keys, $store, $invalidator)->process(
+            new ServerRequest('GET', 'https://example.test/resource'),
+            $this->handler(new Response(200, [
+                'Connection' => 'content-security-policy',
+                'Content-Security-Policy' => "default-src 'none'",
+            ], 'body')),
+        );
+        self::assertSame("default-src 'none'", $response->getHeaderLine('Content-Security-Policy'));
+    }
+
     public function testConnectionNominatedLocationCannotBeCached(): void
     {
         $policy = new HttpCachePolicy(ttl: 60, statuses: [302]);

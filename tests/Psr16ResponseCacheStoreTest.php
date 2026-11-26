@@ -343,6 +343,29 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testCannotStripConnectionNominatedBrowserSecurityFields(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+        foreach ([
+            'Content-Security-Policy' => "default-src 'none'",
+            'X-Content-Type-Options' => 'nosniff',
+            'X-Frame-Options' => 'DENY',
+            'Strict-Transport-Security' => 'max-age=31536000',
+            'Content-Disposition' => 'attachment',
+            'Permissions-Policy' => 'geolocation=()',
+            'Referrer-Policy' => 'no-referrer',
+            'Cross-Origin-Resource-Policy' => 'same-origin',
+            'Access-Control-Allow-Origin' => 'https://example.test',
+            'Access-Control-Allow-Credentials' => 'true',
+        ] as $field => $value) {
+            $response = new Response(200, [$field => $value, 'Connection' => 'X-Optional, ' . strtolower($field)], 'body');
+            self::assertFalse($store->store('key', $response, CacheFreshness::fromTtl(1000, 60)), $field);
+        }
+        self::assertSame([], $cache->values);
+    }
+
     public function testCannotStripConnectionNominatedCacheMetadata(): void
     {
         $cache = new InMemoryCache();
