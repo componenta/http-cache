@@ -13,7 +13,7 @@
         "middleware-factory": {
             "branch": "refactor/middleware-factory-audit",
             "alias": "3.0.x-dev",
-            "commit": "bba06a2a297a365d164f73fc5112eaeadbdaf746"
+            "commit": "2e2cc8cf6f94d518e7a1d64ed99c34ee70ecad32"
         }
     },
     "releases": {
