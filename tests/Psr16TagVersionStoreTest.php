@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Tests;
 
 use Componenta\Http\Cache\Invalidation\Psr16TagVersionStore;
+use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
 use DateInterval;
 use PHPUnit\Framework\TestCase;
 use Psr\SimpleCache\CacheInterface;
@@ -55,20 +56,7 @@ final class Psr16TagVersionStoreTest extends TestCase
 
     public function testBatchedGenerationsAreIndependentAndStable(): void
     {
-        $values = [];
-        $cache = $this->createStub(CacheInterface::class);
-        $cache->method('get')->willReturnCallback(static function (string $key) use (&$values): mixed {
-            return $values[$key] ?? null;
-        });
-        $cache->method('set')->willReturnCallback(static function (string $key, mixed $value) use (&$values): bool {
-            $values[$key] = $value;
-            return true;
-        });
-        $cache->method('getMultiple')->willReturnCallback(static function (iterable $keys) use (&$values): iterable {
-            foreach ($keys as $key) {
-                yield $key => $values[$key] ?? null;
-            }
-        });
+        $cache = new InMemoryCache();
         $store = new Psr16TagVersionStore($cache);
         $first = $store->versions(['catalog', 'product:42', 'catalog']);
         self::assertSame(['catalog', 'product:42'], array_keys($first));

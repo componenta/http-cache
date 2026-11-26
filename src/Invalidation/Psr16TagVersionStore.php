@@ -32,7 +32,7 @@ final readonly class Psr16TagVersionStore implements TagVersionStoreInterface
 
         $values = [];
         foreach ($this->cache->getMultiple(array_keys($keys)) as $key => $value) {
-            if (is_string($key) && isset($keys[$key])) {
+            if (isset($keys[$key])) {
                 $values[$key] = $value;
             }
         }

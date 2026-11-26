@@ -5,16 +5,15 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Tests;
 
 use Componenta\Http\Cache\Store\Psr16ResponseCacheStore;
-use DateInterval;
+use Componenta\Http\Cache\Tests\Fixture\InMemoryCache;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Psr\SimpleCache\CacheInterface;
 
 final class Psr16ResponseCacheStoreTest extends TestCase
 {
     public function testRejectsBodyLargerThanConfiguredLimit(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache, maxEntryBytes: 4);
 
         self::assertFalse($store->store('key', new Response(200, [], '12345'), 60));
@@ -23,7 +22,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testStorePreservesOriginalBodyPosition(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
         $response = new Response(200, [], 'abcdef');
         $response->getBody()->seek(3);
@@ -38,7 +37,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testRejectsEmptyReadBeforeEofAndRestoresPosition(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
         $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
         $body->method('isReadable')->willReturn(true);
@@ -55,7 +54,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testRejectsUnsupportedProtocolStatuses(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
         self::assertFalse($store->store('informational', new Response(101), 60));
@@ -66,7 +65,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testDoesNotStoreSetCookieResponse(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
         self::assertFalse($store->store('key', new Response(200, ['Set-Cookie' => 'session=abc'], 'body'), 60));
@@ -75,7 +74,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testRemovesConnectionSpecificHeadersBeforeStorage(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
         $response = new Response(200, [
             'Connection' => 'X-Trace',
@@ -98,7 +97,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testPreservesUpstreamAgeWhenServingCachedResponse(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
         $response = new Response(200, ['Age' => '120'], 'body');
 
@@ -111,7 +110,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testRejectsPoisonedCachedHeaderMetadata(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $cache->values['key'] = [
             'status' => 200,
             'headers' => ["X-Test\r\nInjected" => ['value']],
@@ -127,7 +126,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testRejectsSemanticallyInvalidCachedPayloads(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
         $valid = [
             'status' => 200,
@@ -159,7 +158,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testStoreRejectsNoStoreAndWildcardVary(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
         self::assertFalse($store->store('key', new Response(200, ['Cache-Control' => 'no-store'], 'body'), 60));
@@ -169,7 +168,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testRejectsOversizedCachedPayloadOnRead(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $cache->values['key'] = [
             'status' => 200,
             'headers' => [],
@@ -199,7 +198,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testSnapshotTimeDoesNotExtendFreshnessDeadline(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
         $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
         $body->method('isReadable')->willReturn(true);
@@ -220,7 +219,7 @@ final class Psr16ResponseCacheStoreTest extends TestCase
 
     public function testPersistsFreshnessDeadlineFromStorageTtl(): void
     {
-        $cache = new ArrayCache();
+        $cache = new InMemoryCache();
         $store = new Psr16ResponseCacheStore($cache);
 
         self::assertTrue($store->store('key', new Response(200, [], 'body'), 60));
@@ -231,74 +230,5 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertNotNull($remaining);
         self::assertGreaterThan(0, $remaining);
         self::assertLessThanOrEqual(60, $remaining);
-    }
-}
-
-final class ArrayCache implements CacheInterface
-{
-    /** @var array<string, mixed> */
-    public array $values = [];
-
-    public function get(string $key, mixed $default = null): mixed
-    {
-        return $this->values[$key] ?? $default;
-    }
-
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
-    {
-        $this->values[$key] = $value;
-
-        return true;
-    }
-
-    public function delete(string $key): bool
-    {
-        unset($this->values[$key]);
-
-        return true;
-    }
-
-    public function clear(): bool
-    {
-        $this->values = [];
-
-        return true;
-    }
-
-    public function getMultiple(iterable $keys, mixed $default = null): iterable
-    {
-        $values = [];
-
-        foreach ($keys as $key) {
-            $values[$key] = $this->get($key, $default);
-        }
-
-        return $values;
-    }
-
-    /**
-     * @param iterable<string, mixed> $values
-     */
-    public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
-    {
-        foreach ($values as $key => $value) {
-            $this->set($key, $value, $ttl);
-        }
-
-        return true;
-    }
-
-    public function deleteMultiple(iterable $keys): bool
-    {
-        foreach ($keys as $key) {
-            $this->delete((string) $key);
-        }
-
-        return true;
-    }
-
-    public function has(string $key): bool
-    {
-        return array_key_exists($key, $this->values);
     }
 }
