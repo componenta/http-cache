@@ -7,6 +7,7 @@ namespace Componenta\Http\Cache\Middleware;
 use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\ConditionalRequest;
+use Componenta\Http\Cache\Internal\EntrySize;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\ResponseMetadata;
 use Componenta\Http\Cache\Internal\SystemClock;
@@ -290,7 +291,8 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         $now = $this->clock->now()->getTimestamp();
         if ($cached->storedAt < 0 || $cached->storedAt > $now || $cached->ageAtStore < 0
-            || !CacheableStatus::allows($cached->status)) {
+            || !CacheableStatus::allows($cached->status)
+            || !EntrySize::fits($cached->headers, $cached->body, $this->maxEntryBytes)) {
             return false;
         }
 

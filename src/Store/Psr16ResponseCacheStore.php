@@ -6,6 +6,7 @@ namespace Componenta\Http\Cache\Store;
 
 use Componenta\Http\Cache\Internal\CacheableStatus;
 use Componenta\Http\Cache\Internal\BodySnapshot;
+use Componenta\Http\Cache\Internal\EntrySize;
 use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Protocol\HeaderList;
@@ -47,7 +48,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             return null;
         }
 
-        if (strlen($cached->body) > $this->maxEntryBytes - $this->headerBytes($cached->headers)) {
+        if (!EntrySize::fits($cached->headers, $cached->body, $this->maxEntryBytes)) {
             return null;
         }
 
@@ -69,13 +70,12 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         }
 
         $headers = $this->storableHeaders($response);
-        $headerBytes = $this->headerBytes($headers);
-
-        if ($headerBytes > $this->maxEntryBytes) {
+        $bodyBudget = EntrySize::remainingBodyBudget($headers, $this->maxEntryBytes);
+        if ($bodyBudget === null) {
             return false;
         }
 
-        $contents = BodySnapshot::read($response->getBody(), $this->maxEntryBytes - $headerBytes);
+        $contents = BodySnapshot::read($response->getBody(), $bodyBudget);
 
         if ($contents === null || (CacheableStatus::forbidsContent($status) && $contents !== '')) {
             return false;
@@ -158,25 +158,5 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         }
 
         return true;
-    }
-
-    /**
-     * @param array<string, list<string>> $headers
-     */
-    private function headerBytes(array $headers): int
-    {
-        $bytes = 0;
-
-        foreach ($headers as $name => $values) {
-            foreach ($values as $value) {
-                $bytes += strlen($name) + strlen($value) + 4;
-
-                if ($bytes > $this->maxEntryBytes) {
-                    return $bytes;
-                }
-            }
-        }
-
-        return $bytes;
     }
 }
