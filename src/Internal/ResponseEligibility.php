@@ -164,8 +164,28 @@ final class ResponseEligibility
         return true;
     }
 
+    /**
+     * @param array<string, list<string>> $headers Case-insensitive field index with lowercase names.
+     */
+    public static function hasRequiredStatusFields(int $status, array $headers): bool
+    {
+        return match ($status) {
+            401 => isset($headers['www-authenticate'])
+                && trim(implode(', ', $headers['www-authenticate']), " \t,") !== '',
+            // A resource can have no currently allowed methods.
+            405 => isset($headers['allow']) && $headers['allow'] !== [],
+            default => true,
+        };
+    }
+
     public static function hasSafeStorageMetadata(ResponseInterface $response): bool
     {
+        $status = $response->getStatusCode();
+        if (in_array($status, [401, 405], true)
+            && !self::hasRequiredStatusFields($status, array_change_key_case($response->getHeaders(), CASE_LOWER))) {
+            return false;
+        }
+
         // Transfer codings and trailers belong to the transport. A PSR-7
         // stream alone cannot prove that all codings were decoded or that
         // trailer metadata has been incorporated into the representation.
@@ -189,7 +209,7 @@ final class ResponseEligibility
                 'cache-control', 'age', 'date', 'expires', 'vary', 'etag',
                 'last-modified', 'content-length', 'content-type', 'content-encoding',
                 'content-language', 'content-location', 'content-digest',
-                'location', 'www-authenticate',
+                'location', 'www-authenticate', 'allow',
             ], true)) {
                 return false;
             }

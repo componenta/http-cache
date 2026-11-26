@@ -115,7 +115,7 @@ final readonly class CachedResponse
         }
 
         $normalized = StoredHeaders::normalize($headers);
-        if ($normalized === null) {
+        if ($normalized === null || !ResponseEligibility::hasRequiredStatusFields($status, $normalized)) {
             return null;
         }
 

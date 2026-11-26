@@ -367,7 +367,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         }
 
         $headers = StoredHeaders::normalize($cached->headers);
-        if ($headers === null) {
+        if ($headers === null || !ResponseEligibility::hasRequiredStatusFields($cached->status, $headers)) {
             return false;
         }
         $responseControl = CacheControl::fromValues($headers['cache-control'] ?? []);
