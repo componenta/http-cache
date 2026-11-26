@@ -83,7 +83,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
 
         $storedAt = $this->clock->now()->getTimestamp();
         $remaining = $freshness->remainingAt($storedAt);
-        if ($storedAt < $freshness->receivedAt || $remaining <= 0) {
+        if ($storedAt < $now || $remaining <= 0) {
             return false;
         }
 
