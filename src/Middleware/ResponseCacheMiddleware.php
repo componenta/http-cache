@@ -75,7 +75,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             try {
                 $eligible = $this->isRequestCacheable($request, $policy, $cacheControl);
             } catch (Throwable $exception) {
-                $this->logger?->warning('HTTP cache request inspection failed.', ['exception' => $exception]);
+                $this->reportFailure('HTTP cache request inspection failed.', $exception);
             }
         }
 
@@ -88,7 +88,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         try {
             $key = $this->keys->generate($request, $policy);
         } catch (Throwable $exception) {
-            $this->logger?->warning('HTTP cache key generation failed.', ['exception' => $exception]);
+            $this->reportFailure('HTTP cache key generation failed.', $exception);
 
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'BYPASS')
@@ -102,7 +102,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $cached = $this->store->fetch($key);
                 $mayHaveEntry = $cached !== null;
             } catch (Throwable $exception) {
-                $this->logger?->warning('HTTP cache read failed.', ['exception' => $exception]);
+                $this->reportFailure('HTTP cache read failed.', $exception);
                 $cached = null;
             }
 
@@ -112,7 +112,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                         return ResponseMetadata::protectPrivate($this->cachedResponse($request, $cached), $policy);
                     }
                 } catch (Throwable $exception) {
-                    $this->logger?->warning('HTTP cached response reconstruction failed.', ['exception' => $exception]);
+                    $this->reportFailure('HTTP cached response reconstruction failed.', $exception);
                     $cached = null;
                 }
             }
@@ -174,7 +174,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $response = $prepared;
             }
         } catch (Throwable $exception) {
-            $this->logger?->warning('HTTP cache write failed.', ['exception' => $exception]);
+            $this->reportFailure('HTTP cache write failed.', $exception);
         } finally {
             // A new origin response supersedes an earlier response for this key,
             // even if the new one cannot be retained. Do not refresh on a 304
@@ -183,7 +183,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 try {
                     $this->store->delete($key);
                 } catch (Throwable $exception) {
-                    $this->logger?->error('HTTP cache superseded entry removal failed.', ['exception' => $exception]);
+                    $this->reportFailure('HTTP cache superseded entry removal failed.', $exception, error: true);
                 }
             }
         }
@@ -202,7 +202,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         try {
             $this->invalidator->invalidateTags([RequestTarget::cacheTag($request)]);
         } catch (Throwable $exception) {
-            $this->logger?->error('HTTP cache invalidation failed after unsafe request.', ['exception' => $exception]);
+            $this->reportFailure('HTTP cache invalidation failed after unsafe request.', $exception, error: true);
 
             return $this->withDebugHeader($response, 'INVALIDATION-FAILED');
         }
@@ -390,6 +390,20 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     private function isUnsafeMethod(string $method): bool
     {
         return !in_array($method, ['GET', 'HEAD', 'OPTIONS', 'TRACE'], true);
+    }
+
+    private function reportFailure(string $message, Throwable $exception, bool $error = false): void
+    {
+        try {
+            if ($error) {
+                $this->logger?->error($message, ['exception' => $exception]);
+            } else {
+                $this->logger?->warning($message, ['exception' => $exception]);
+            }
+        } catch (Throwable) {
+            // Diagnostics must not replace the origin response or mask a
+            // completed unsafe request when the logging backend also fails.
+        }
     }
 
     private function withDebugHeader(ResponseInterface $response, string $status): ResponseInterface
