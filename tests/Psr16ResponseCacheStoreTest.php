@@ -221,6 +221,36 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame([], $cache->values);
     }
 
+    public function testFetchRejectsExpiredEntriesEvenWhenBackendIgnoresTtl(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($backend, clock: $clock);
+        self::assertTrue($store->store('key', new Response(200, [], 'fresh'), CacheFreshness::fromTtl(1000, 10)));
+        $clock->advance(9);
+        self::assertSame('fresh', $store->fetch('key')?->body);
+
+        $clock->advance(1);
+        self::assertNotNull($backend->get('key'));
+        self::assertNull($store->fetch('key'));
+    }
+
+    public function testFetchRejectsAnEntryWithoutFreshnessDeadline(): void
+    {
+        $clock = new MutableClock(new DateTimeImmutable('@1000'));
+        $backend = new InMemoryCache();
+        $backend->values['key'] = [
+            'status' => 200,
+            'headers' => [],
+            'body' => 'legacy',
+            'storedAt' => 990,
+            'ageAtStore' => 0,
+        ];
+        $store = new Psr16ResponseCacheStore($backend, clock: $clock);
+
+        self::assertNull($store->fetch('key'));
+    }
+
     public function testRejectsOversizedCachedPayloadOnRead(): void
     {
         $cache = new InMemoryCache();

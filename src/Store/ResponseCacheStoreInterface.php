@@ -8,6 +8,7 @@ use Psr\Http\Message\ResponseInterface;
 
 interface ResponseCacheStoreInterface
 {
+    /** Return a usable, fresh entry, or null when missing, invalid or expired. */
     public function fetch(string $key): ?CachedResponse;
 
     /**

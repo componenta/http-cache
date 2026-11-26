@@ -41,7 +41,9 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
         /** @var array<string, mixed> $payload */
         $cached = CachedResponse::fromArray($payload);
 
-        if ($cached === null || $cached->storedAt > $this->clock->now()->getTimestamp()) {
+        $now = $this->clock->now()->getTimestamp();
+        if ($cached === null || $cached->storedAt > $now
+            || $cached->freshUntil === null || $cached->freshUntil <= $now) {
             return null;
         }
 
