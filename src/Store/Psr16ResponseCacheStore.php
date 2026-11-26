@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Cache\Store;
 
 use Componenta\Http\Cache\Internal\BodySnapshot;
+use Componenta\Http\Cache\Internal\ResponseEligibility;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Protocol\HeaderList;
 use Componenta\Http\Cache\Protocol\ResponseAge;
@@ -59,8 +60,7 @@ final readonly class Psr16ResponseCacheStore implements ResponseCacheStoreInterf
             $ttl <= 0
             || $status < 200
             || in_array($status, [206, 304], true)
-            || $response->hasHeader(Header::SET_COOKIE)
-            || $response->hasHeader(Header::CONTENT_RANGE)
+            || !ResponseEligibility::hasSafeStorageMetadata($response)
         ) {
             return false;
         }

@@ -97,6 +97,16 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame(['kept'], $cached->headers['X-End-To-End']);
     }
 
+    public function testCannotStripConnectionNominatedCacheMetadata(): void
+    {
+        $cache = new InMemoryCache();
+        $store = new Psr16ResponseCacheStore($cache);
+        $response = new Response(200, ['Connection' => 'Vary', 'Vary' => 'Accept-Language'], 'body');
+
+        self::assertFalse($store->store('key', $response, 60));
+        self::assertSame([], $cache->values);
+    }
+
     public function testPreservesUpstreamAgeWhenServingCachedResponse(): void
     {
         $cache = new InMemoryCache();

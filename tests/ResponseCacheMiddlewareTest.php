@@ -551,6 +551,30 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertFalse($result->hasHeader('ETag'));
     }
 
+    public function testIncompleteContentLengthIsNotStoredEvenWithOriginEtag(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, ['Content-Length' => '5', 'ETag' => '"origin"'], 'bad'));
+
+        $result = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
+
+        self::assertSame('bad', (string) $result->getBody());
+    }
+
+    public function testOffloadedResponseIsNotStored(): void
+    {
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+        $handler = $this->handler(new Response(200, ['X-Accel-Redirect' => '/internal/file']));
+
+        $result = $this->middleware($policies, $keys, $store, $invalidator)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $handler);
+
+        self::assertSame('/internal/file', $result->getHeaderLine('X-Accel-Redirect'));
+    }
+
     public function testOversizedResponseBypassesCacheBeforeEtagGeneration(): void
     {
         $policy = new HttpCachePolicy(ttl: 60);

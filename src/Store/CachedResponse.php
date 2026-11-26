@@ -122,7 +122,7 @@ final readonly class CachedResponse
             if (isset($normalized[$lowerName]) || in_array($lowerName, [
                 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authentication-info',
                 'proxy-authorization', 'proxy-connection', 'te', 'trailer',
-                'transfer-encoding', 'upgrade', 'set-cookie', 'content-range',
+                'transfer-encoding', 'upgrade', 'set-cookie', 'content-range', 'x-accel-redirect', 'x-sendfile',
             ], true) || $values === []) {
                 return null;
             }

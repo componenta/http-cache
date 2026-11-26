@@ -6,6 +6,8 @@ namespace Componenta\Http\Cache\Middleware;
 
 use Componenta\Http\Cache\Internal\BodySnapshot;
 use Componenta\Http\Cache\Internal\ConditionalRequest;
+use Componenta\Http\Cache\Internal\ResponseEligibility;
+use Componenta\Http\Cache\Internal\ResponseMetadata;
 use Componenta\Http\Cache\Internal\SystemClock;
 use Componenta\Http\Cache\Invalidation\CacheInvalidatorInterface;
 use Componenta\Http\Cache\Key\CacheKeyGeneratorInterface;
@@ -67,7 +69,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
         if ($policy === null || !$policy->enabled || !$this->isRequestCacheable($request, $policy, $cacheControl)) {
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS')
-                : $this->protectPrivateResponse($handler->handle($request), $policy);
+                : ResponseMetadata::protectPrivate($handler->handle($request), $policy);
         }
 
         try {
@@ -77,7 +79,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
             return $onlyIfCached
                 ? $this->withDebugHeader($this->responseFactory->createResponse(504), 'BYPASS')
-                : $this->withDebugHeader($this->protectPrivateResponse($handler->handle($request), $policy), 'BYPASS');
+                : $this->withDebugHeader(ResponseMetadata::protectPrivate($handler->handle($request), $policy), 'BYPASS');
         }
 
         if (!$this->bypassLookup($request, $cacheControl)) {
@@ -88,9 +90,9 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
                 $cached = null;
             }
 
-            if ($cached !== null && $this->requestAcceptsCachedResponse($cached, $policy, $cacheControl)) {
+            if ($cached !== null && $this->requestAcceptsCachedResponse($request, $cached, $policy, $cacheControl)) {
                 try {
-                    return $this->protectPrivateResponse($this->cachedResponse($request, $cached), $policy);
+                    return ResponseMetadata::protectPrivate($this->cachedResponse($request, $cached), $policy);
                 } catch (Throwable $exception) {
                     $this->logger?->warning('HTTP cached response reconstruction failed.', ['exception' => $exception]);
                     $cached = null;
@@ -115,30 +117,34 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
 
         try {
             $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
-            $ttl = $this->responseTtl($response, $policy, $initialAge, $responseTime);
+            $ttl = ResponseEligibility::ttl($response, $policy, $initialAge, $responseTime, $this->maxEntryBytes);
 
             if ($ttl === null) {
-                return $this->withDebugHeader($this->protectPrivateResponse($response, $policy), 'BYPASS');
+                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
             }
 
             $receipt = (int) $responseTime;
             $deadline = $ttl > PHP_INT_MAX - $receipt ? PHP_INT_MAX : $receipt + $ttl;
-            $response = $this->prepareResponse($response, $policy);
+            $response = ResponseMetadata::prepare($response, $policy);
             $storedResponse = $response;
 
-            if ($policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG)) {
+            $generateEtag = $policy->generateEtag && $request->getMethod() === HttpMethod::GET && !$response->hasHeader(Header::ETAG);
+            $validateLength = $request->getMethod() === HttpMethod::GET && $response->hasHeader(Header::CONTENT_LENGTH);
+            if ($generateEtag || $validateLength) {
                 $contents = BodySnapshot::read($response->getBody(), $this->maxEntryBytes);
-                if ($contents === null) {
-                    return $this->withDebugHeader($this->protectPrivateResponse($response, $policy), 'BYPASS');
+                if ($contents === null || ($validateLength && !ResponseEligibility::matchesContentLength($response->getHeader(Header::CONTENT_LENGTH), strlen($contents)))) {
+                    return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
                 }
-                $response = $response->withHeader(Header::ETAG, $this->weakEtag($response, $contents));
+                if ($generateEtag) {
+                    $response = $response->withHeader(Header::ETAG, ResponseMetadata::weakEtag($response, $contents));
+                }
                 $storedResponse = $response->withBody($this->streamFactory->createStream($contents));
             }
 
             $now = $this->clock->now()->getTimestamp();
             $remaining = $deadline - $now;
             if ($remaining <= 0) {
-                return $this->withDebugHeader($this->protectPrivateResponse($response, $policy), 'BYPASS');
+                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
             }
             $elapsed = max(0, $now - $receipt);
             $age = $initialAge > PHP_INT_MAX - $elapsed ? PHP_INT_MAX : $initialAge + $elapsed;
@@ -149,7 +155,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $stored = false;
         }
 
-        return $this->withDebugHeader($stored ? $response : $this->protectPrivateResponse($response, $policy), $stored ? 'MISS' : 'BYPASS');
+        return $this->withDebugHeader($stored ? $response : ResponseMetadata::protectPrivate($response, $policy), $stored ? 'MISS' : 'BYPASS');
     }
 
     private function handleUnsafe(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -225,6 +231,7 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     }
 
     private function requestAcceptsCachedResponse(
+        ServerRequestInterface $request,
         CachedResponse $cached,
         HttpCachePolicy $policy,
         CacheControl $cacheControl,
@@ -251,208 +258,20 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return false;
         }
 
+        $headers = array_change_key_case($cached->headers, CASE_LOWER);
+        $responseControl = CacheControl::fromValues($headers['cache-control'] ?? []);
+        if ($responseControl->has('no-store') || $responseControl->has('no-cache')
+            || $responseControl->has('must-understand') || (!$policy->private && $responseControl->has('private'))
+            || isset($headers['set-cookie']) || isset($headers['content-range'])
+            || isset($headers['x-accel-redirect']) || isset($headers['x-sendfile'])) {
+            return false;
+        }
+        if ($request->getMethod() === HttpMethod::GET
+            && !ResponseEligibility::matchesContentLength($headers['content-length'] ?? [], strlen($cached->body))) {
+            return false;
+        }
+
         return $policy->allowsStatus($cached->status);
-    }
-
-    private function responseTtl(
-        ResponseInterface $response,
-        HttpCachePolicy $policy,
-        int $currentAge,
-        float $responseTime,
-    ): ?int {
-        if (!$policy->allowsStatus($response->getStatusCode())) {
-            return null;
-        }
-
-        if ($response->hasHeader(Header::SET_COOKIE) || $response->hasHeader(Header::CONTENT_RANGE)) {
-            return null;
-        }
-
-        $size = $response->getBody()->getSize();
-
-        if ($size !== null && $size > $this->maxEntryBytes) {
-            return null;
-        }
-
-        $cacheControl = CacheControl::fromValues($response->getHeader(Header::CACHE_CONTROL));
-
-        if ($cacheControl->has('no-store') || $cacheControl->has('no-cache') || $cacheControl->has('must-understand')) {
-            return null;
-        }
-
-        if ($cacheControl->has('private') && !$policy->private) {
-            return null;
-        }
-
-        if (!$this->storageIsPermitted($response, $policy, $cacheControl)) {
-            return null;
-        }
-
-        if (!$this->varyIsCompatible($response, $policy)) {
-            return null;
-        }
-
-        $ttl = $policy->ttl;
-        $freshness = null;
-
-        if (!$policy->private) {
-            $freshness = $cacheControl->integer('s-maxage');
-        }
-
-        if ($freshness === null) {
-            $freshness = $cacheControl->integer('max-age');
-        }
-
-        if ($freshness === false) {
-            return null;
-        }
-
-        if (is_int($freshness)) {
-            $remaining = $freshness - $currentAge;
-
-            if ($remaining <= 0) {
-                return null;
-            }
-
-            $ttl = min($ttl, $remaining);
-        } elseif ($response->hasHeader(Header::EXPIRES)) {
-            $expires = HttpDate::parse($response->getHeaderLine(Header::EXPIRES), (int) $responseTime);
-            $date = HttpDate::parse($response->getHeaderLine(Header::DATE), (int) $responseTime);
-
-            if ($expires === null || $date === null || $expires <= $date) {
-                return null;
-            }
-
-            $remaining = ($expires - $date) - $currentAge;
-
-            if ($remaining <= 0) {
-                return null;
-            }
-
-            $ttl = min($ttl, $remaining);
-        } else {
-            $remaining = $policy->ttl - $currentAge;
-
-            if ($remaining <= 0) {
-                return null;
-            }
-
-            $ttl = $remaining;
-        }
-
-        return max(1, $ttl);
-    }
-
-    private function storageIsPermitted(
-        ResponseInterface $response,
-        HttpCachePolicy $policy,
-        CacheControl $cacheControl,
-    ): bool {
-        if (!$response->hasHeader(Header::CACHE_CONTROL) || $policy->private) {
-            return true;
-        }
-
-        if (
-            $cacheControl->has('public')
-            || $cacheControl->has('max-age')
-            || $response->hasHeader(Header::EXPIRES)
-            || $cacheControl->has('s-maxage')
-        ) {
-            return true;
-        }
-
-        return in_array(
-            $response->getStatusCode(),
-            [200, 203, 204, 300, 301, 308, 404, 405, 410, 414, 501],
-            true,
-        );
-    }
-
-    private function prepareResponse(
-        ResponseInterface $response,
-        HttpCachePolicy $policy,
-    ): ResponseInterface {
-        if (!$response->hasHeader(Header::CACHE_CONTROL)) {
-            $response = $response->withHeader(Header::CACHE_CONTROL, $policy->cacheControlValue());
-        } elseif ($policy->private) {
-            $response = $this->forcePrivateCacheControl($response);
-        }
-
-        $vary = $this->varyHeaders($response);
-
-        foreach ($policy->varyHeaders as $header) {
-            $vary[] = $header;
-        }
-
-        if ($policy->private) {
-            $vary[] = strtolower(Header::AUTHORIZATION);
-            $vary[] = strtolower(Header::COOKIE);
-        }
-
-        $vary = array_values(array_unique($vary));
-
-        if ($vary !== []) {
-            $response = $response->withHeader(Header::VARY, implode(', ', $vary));
-        }
-
-        return $response;
-    }
-
-    private function protectPrivateResponse(ResponseInterface $response, ?HttpCachePolicy $policy): ResponseInterface
-    {
-        // An explicit callback veto is not permission to change the origin response.
-        if ($policy === null || !$policy->enabled || !$policy->private) {
-            return $response;
-        }
-
-        $response = $this->forcePrivateCacheControl($response);
-        $vary = $this->varyHeaders($response);
-        if (!in_array('*', $vary, true)) {
-            $vary[] = strtolower(Header::AUTHORIZATION);
-            $vary[] = strtolower(Header::COOKIE);
-            $response = $response->withHeader(Header::VARY, implode(', ', array_unique($vary)));
-        }
-
-        return $response;
-    }
-
-    private function forcePrivateCacheControl(ResponseInterface $response): ResponseInterface
-    {
-        $parts = [];
-
-        foreach (HeaderList::split($response->getHeader(Header::CACHE_CONTROL)) as $part) {
-            $name = strtolower(trim(explode('=', $part, 2)[0]));
-
-            if (!in_array($name, ['public', 'private', 's-maxage'], true)) {
-                $parts[] = $part;
-            }
-        }
-
-        array_unshift($parts, 'private');
-
-        return $response->withHeader(Header::CACHE_CONTROL, implode(', ', $parts));
-    }
-
-    private function weakEtag(ResponseInterface $response, string $contents): string
-    {
-        $context = hash_init('sha256');
-
-        foreach ([
-            Header::CONTENT_TYPE,
-            Header::CONTENT_ENCODING,
-            Header::CONTENT_LANGUAGE,
-            Header::CONTENT_LOCATION,
-            Header::CONTENT_DIGEST,
-        ] as $header) {
-            hash_update($context, strtolower($header) . "\0");
-            foreach ($response->getHeader($header) as $value) {
-                hash_update($context, $value . "\0");
-            }
-        }
-
-        hash_update($context, $contents);
-
-        return 'W/"' . hash_final($context) . '"';
     }
 
     private function bypassLookup(ServerRequestInterface $request, CacheControl $cacheControl): bool
@@ -472,48 +291,6 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
     private function requestCacheControl(ServerRequestInterface $request): CacheControl
     {
         return CacheControl::fromValues($request->getHeader(Header::CACHE_CONTROL));
-    }
-
-    private function varyIsCompatible(ResponseInterface $response, HttpCachePolicy $policy): bool
-    {
-        $vary = $this->varyHeaders($response);
-
-        if (in_array('*', $vary, true)) {
-            return false;
-        }
-
-        $allowed = $policy->varyHeaders;
-
-        if ($policy->private) {
-            $allowed[] = strtolower(Header::AUTHORIZATION);
-            $allowed[] = strtolower(Header::COOKIE);
-        }
-
-        foreach ($vary as $header) {
-            if (!in_array($header, $allowed, true)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function varyHeaders(ResponseInterface $response): array
-    {
-        $headers = [];
-
-        foreach (HeaderList::split($response->getHeader(Header::VARY)) as $header) {
-            $header = strtolower(trim($header));
-
-            if ($header !== '' && !in_array($header, $headers, true)) {
-                $headers[] = $header;
-            }
-        }
-
-        return $headers;
     }
 
     /**
