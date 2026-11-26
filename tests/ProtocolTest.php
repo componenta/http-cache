@@ -62,6 +62,29 @@ final class ProtocolTest extends TestCase
         self::assertSame($expected, HttpDate::parse('Sun Nov  6 08:49:37 1994'));
     }
 
+    public function testObsoleteHttpDateUsesFullFiftyYearBoundary(): void
+    {
+        $now = (new \DateTimeImmutable('2026-01-01T00:00:00+00:00'))->getTimestamp();
+        $past = (new \DateTimeImmutable('1976-12-31T00:00:00+00:00'))->getTimestamp();
+        $boundary = (new \DateTimeImmutable('2076-01-01T00:00:00+00:00'))->getTimestamp();
+
+        self::assertSame($past, HttpDate::parse(gmdate('l, d-M-y H:i:s \G\M\T', $past), $now));
+        self::assertSame($boundary, HttpDate::parse(gmdate('l, d-M-y H:i:s \G\M\T', $boundary), $now));
+    }
+
+    public function testObsoleteHttpDateCanResolveIntoNextCentury(): void
+    {
+        $now = (new \DateTimeImmutable('2090-01-01T00:00:00+00:00'))->getTimestamp();
+        $future = (new \DateTimeImmutable('2105-06-01T00:00:00+00:00'))->getTimestamp();
+
+        self::assertSame($future, HttpDate::parse(gmdate('l, d-M-y H:i:s \G\M\T', $future), $now));
+    }
+
+    public function testHttpDateDoesNotApplyPhpTwoDigitYearConversionToFourDigitYear(): void
+    {
+        self::assertNull(HttpDate::parse('Fri, 01 Jan 0099 00:00:00 GMT'));
+    }
+
     public function testHttpDateCacheParsingIsCaseInsensitive(): void
     {
         self::assertNotNull(HttpDate::parse('sun, 06 nov 1994 08:49:37 gmt'));

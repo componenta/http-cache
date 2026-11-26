@@ -47,10 +47,16 @@ final class HttpDate
             $value,
             $matches,
         ) === 1) {
-            $currentYear = (int) gmdate('Y', $now ?? time());
-            $year = intdiv($currentYear, 100) * 100 + (int) $matches[4];
+            $now ??= time();
+            $limitYear = (int) gmdate('Y', $now) + 50;
+            $year = intdiv($limitYear, 100) * 100 + (int) $matches[4];
+            $month = self::MONTHS[strtolower($matches[3])];
+            $dateWithinYear = sprintf('%02d%s%s%s%s', $month, $matches[2], $matches[5], $matches[6], $matches[7]);
 
-            if ($year > $currentYear + 50) {
+            // Select the latest matching century whose timestamp is not more
+            // than fifty calendar years ahead (RFC 9110, section 5.6.7).
+            if ($year > $limitYear
+                || ($year === $limitYear && strcmp($dateWithinYear, gmdate('mdHis', $now)) > 0)) {
                 $year -= 100;
             }
 
@@ -107,6 +113,8 @@ final class HttpDate
 
         if (
             $monthNumber === null
+            || $year < 1900
+            || $year > 9999
             || !checkdate($monthNumber, $day, $year)
             || $hour > 23
             || $minute > 59
