@@ -387,6 +387,20 @@ final class Psr16ResponseCacheStoreTest extends TestCase
         self::assertSame(PHP_INT_MAX, $cached->age(time()));
     }
 
+    public function testBackwardClockJumpDuringSnapshotCannotExtendRemainingTtl(): void
+    {
+        $cache = new InMemoryCache();
+        $clock = $this->createStub(\Psr\Clock\ClockInterface::class);
+        $clock->method('now')->willReturnOnConsecutiveCalls(
+            new DateTimeImmutable('@105'),
+            new DateTimeImmutable('@103'),
+        );
+        $store = new Psr16ResponseCacheStore($cache, clock: $clock);
+
+        self::assertFalse($store->store('key', new Response(200, [], 'body'), CacheFreshness::fromTtl(100, 10)));
+        self::assertSame([], $cache->values);
+    }
+
     public function testSnapshotTimeDoesNotExtendFreshnessDeadline(): void
     {
         $cache = new InMemoryCache();

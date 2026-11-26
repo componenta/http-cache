@@ -106,6 +106,36 @@ final class DefaultCacheKeyGeneratorTest extends TestCase
         $generator->generate($request, new HttpCachePolicy(ttl: 60));
     }
 
+    public function testFloatParametersAreIndependentOfJsonSerializationPrecision(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $request = new ServerRequest('GET', 'https://example.test/items');
+        $a = $request->withQueryParams(['value' => 1.2341]);
+        $b = $request->withQueryParams(['value' => 1.2342]);
+
+        $previous = ini_set('serialize_precision', '3');
+        self::assertIsString($previous);
+        try {
+            $first = $generator->generate($a, $policy);
+            self::assertNotSame($first, $generator->generate($b, $policy));
+            ini_set('serialize_precision', '-1');
+            self::assertSame($first, $generator->generate($a, $policy));
+        } finally {
+            ini_set('serialize_precision', $previous);
+        }
+    }
+
+    public function testFloatEncodingCannotAliasUserSuppliedArrayOrString(): void
+    {
+        $generator = new DefaultCacheKeyGenerator($this->tags());
+        $policy = new HttpCachePolicy(ttl: 60);
+        $request = new ServerRequest('GET', 'https://example.test/items');
+        $float = $generator->generate($request->withQueryParams(['value' => 1.25]), $policy);
+        self::assertNotSame($float, $generator->generate($request->withQueryParams(['value' => '1.25']), $policy));
+        self::assertNotSame($float, $generator->generate($request->withQueryParams(['value' => ['float', bin2hex(pack('E', 1.25))]]), $policy));
+    }
+
     public function testParsedQueryParametersPartitionIdenticalWireUris(): void
     {
         $generator = new DefaultCacheKeyGenerator($this->tags());

@@ -1058,6 +1058,25 @@ final class ResponseCacheMiddlewareTest extends TestCase
         self::assertSame('public, max-age=5', $response->getHeaderLine('Cache-Control'));
     }
 
+    public function testBackwardClockJumpDuringOriginDoesNotEstablishFreshness(): void
+    {
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturnOnConsecutiveCalls(
+            new DateTimeImmutable('@1010'),
+            new DateTimeImmutable('@1000'),
+            new DateTimeImmutable('@1000'),
+            new DateTimeImmutable('@1000'),
+        );
+        [$policies, $keys, $store, $invalidator] = $this->cacheMissDependencies(new HttpCachePolicy(ttl: 60));
+        $store->expects(self::never())->method('store');
+
+        $response = $this->middleware($policies, $keys, $store, $invalidator, clock: $clock)
+            ->process(new ServerRequest('GET', 'https://example.test/items'), $this->handler(new Response(200, [], 'origin')));
+
+        self::assertSame('origin', (string) $response->getBody());
+        self::assertFalse($response->hasHeader('Cache-Control'));
+    }
+
     public function testClockFailureBeforeOriginDoesNotPreventHandling(): void
     {
         $clock = $this->createMock(ClockInterface::class);
