@@ -123,19 +123,29 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             return $this->withDebugHeader($this->responseFactory->createResponse(504), 'MISS');
         }
 
-        $requestTime = (float) $this->clock->now()->format('U.u');
-        $response = $handler->handle($request);
-        $responseTime = (float) $this->clock->now()->format('U.u');
-
-        if (
-            !$response->hasHeader(Header::DATE)
-            || HttpDate::parse($response->getHeaderLine(Header::DATE), (int) $responseTime) === null
-        ) {
-            $response = $response->withHeader(Header::DATE, HttpDate::format((int) $responseTime));
+        $requestTime = null;
+        try {
+            $requestTime = (float) $this->clock->now()->format('U.u');
+        } catch (Throwable $exception) {
+            $this->reportFailure('HTTP cache request timing failed.', $exception);
         }
+        // Origin errors must propagate unchanged and origin must run only once.
+        $response = $handler->handle($request);
 
         $stored = false;
         try {
+            if ($requestTime === null) {
+                return $this->withDebugHeader(ResponseMetadata::protectPrivate($response, $policy), 'BYPASS');
+            }
+            $responseTime = (float) $this->clock->now()->format('U.u');
+
+            if (
+                !$response->hasHeader(Header::DATE)
+                || HttpDate::parse($response->getHeaderLine(Header::DATE), (int) $responseTime) === null
+            ) {
+                $response = $response->withHeader(Header::DATE, HttpDate::format((int) $responseTime));
+            }
+
             $initialAge = ResponseAge::correctedInitialAge($response, $requestTime, $responseTime);
             $ttl = ResponseEligibility::ttl($response, $policy, $initialAge, $responseTime, $this->maxEntryBytes);
 
@@ -173,6 +183,12 @@ final readonly class ResponseCacheMiddleware implements MiddlewareInterface
             $stored = $this->store->store($key, $storedResponse, $freshness);
             if ($stored) {
                 $response = $prepared;
+                // Account for time spent waiting for the storage adapter too.
+                // Keep the prepared response if this final clock read fails.
+                $response = $response->withHeader(
+                    Header::AGE,
+                    (string) $freshness->ageAt(max($now, $this->clock->now()->getTimestamp())),
+                );
             }
         } catch (Throwable $exception) {
             $this->reportFailure('HTTP cache write failed.', $exception);
