@@ -2,7 +2,7 @@
 
 **Status:** normative contract for the native attribute callback implementation on PHP 8.5.13+ and the current Componenta dependency lines.
 
-**Audit amendments:** the HTTP Cache 2.0 safety audit deliberately strengthens the URI/method key and initializes persistent random generations on first access. Old cache entries are not reused. `only-if-cached` vetoes origin execution for every method, including unsafe ones. An enabled private policy protects outgoing responses on bypass as well as on storage; a callback-disabled policy still does not rewrite the origin. These changes supersede baseline-preservation statements only where necessary for the confirmed defects; the callback signatures, evaluation, precedence, error behavior and data-only resolved policies remain unchanged.
+**Audit amendments:** the HTTP Cache 2.0 safety audit deliberately strengthens the URI/method key and initializes persistent random generations on first access. Old cache entries are not reused. `only-if-cached` vetoes origin execution for every method, including unsafe ones. An enabled policy preserves outgoing Vary constraints on bypass as well as on storage; private policies additionally protect credentials and enforce private cache directives. A callback-disabled policy still does not rewrite the origin. Synthesized freshness requires successful storage. These changes supersede baseline-preservation statements only where necessary for the confirmed defects; the callback signatures, evaluation, precedence, error behavior and data-only resolved policies remain unchanged.
 
 ## Objective
 
